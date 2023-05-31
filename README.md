@@ -1,12 +1,17 @@
 # Kubernetes Documentation
 {:.no_toc}
 
-[[_TOC_]]
+{:toc}
 
 ## What is Kubernetes
 
 ## Terminology Reference
 
+* control plane / worker
+
+## How Kubernetes Works
+
+* API driven
 
 ## Runtime
 
@@ -119,7 +124,7 @@ snap install --classic kubectl
 snap install --classic kubelet
 ```
 
-Note, my limited testing with snap these packages resulted in a sub-optimal experience.
+Author note: My limited testing with snap these packages resulted in a sub-optimal experience.
 
 ### Manual Install
 
@@ -128,6 +133,20 @@ Installation can also be done independently. Instructions are available on:
 * https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
 * https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/
 
+
+### Upgrading
+Upgrading Kubernetes may require specific upgrade documentation and should only
+be done when following the documentation. To avoid bad things from potentially
+happening, you can mark the packages to not auto-update.
+```
+# For apt installs
+apt-mark hold kubelet kubeadm kubectl
+
+# For snap installs
+snap refresh --hold kubelet
+snap refresh --hold kubeadm
+snap refresh --hold kubectl
+```
 
 ## Initialize the Cluster
 If everything else is ready, you can create a new cluster by
