@@ -53,7 +53,7 @@ systemctl restart containerd
 ```
 
 ### Disable Swap
-While modern K8s does have some support for swap memory, older versions would
+While modern K8s does have some support for swap memory, older versions will
 not work at all with any swap space. To avoid issue, you can disable swap
 entirely.
 ```
@@ -145,7 +145,7 @@ Here is an example command to create a cluster.
 ```sh
 kubeadm init --control-plane-endpoint=kube1.test.lib.msu.edu \
              # IP address to say API server is listening on
-             --apiserver-advertise-address 35.8.223.999 \
+             --apiserver-advertise-address 35.8.223.111 \
              # CIDR address range to use (a specific CIDR may be required for certain networks)
              --pod-network-cidr 10.244.0.0/16
 ```
@@ -160,6 +160,13 @@ to reset a node back to a pre-configured, pre-cluster state, it does
 a partial job at best. Make certain you get all you configurations
 correct for your first `kubeadm init` command and it may save you
 some headaches.
+
+### Firewalls
+If you have firewalls enabled, such as `ufw`, you will need to allow the
+pod network talk to your control plane API. For our example case:
+```
+ufw allow from 10.244.0.0/16 to 35.8.223.112 port 6443 proto tcp
+```
 
 ## Controlling the Cluster
 Where configuring the cluster is done via `kubeadm`, controlling the cluster
@@ -252,4 +259,6 @@ For an even more extensive list, check out the readme on the
 
 Note that when using a cloud networking provider, you may not have
 any choice in what your networking option will be.
+
+## Additional Cluster Nodes
 
