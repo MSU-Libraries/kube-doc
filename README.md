@@ -21,10 +21,35 @@ installed, as Docker Engine also makes use of containerd.
 
 ## Setup & Install
 
+Provision your nodes and ensure `/etc/hosts` is set up with all node
+hostnames and IPs on each of the other nodes in the cluster.
+
+### Example Setup
+For the examples in this readme, we'll be using the following nodes, all
+setup with Ubuntu 22.04.
+
+* `kube1.test.lib.msu.edu`, `35.8.223.111`
+* `kube2.test.lib.msu.edu`, `35.8.223.112`
+* `kube3.test.lib.msu.edu`, `35.8.223.113`
+
+### Install Container Runtime
 Kubernetes requires a CRI available, as noted above. We can use `containerd`
 for this purpose. On Ubuntu, this can be installed via:
 ```
 apt install -y containerd
+```
+
+**Bug Fix**  
+At least [on Debian/Ubuntu](https://github.com/kubernetes/kubernetes/issues/110177),
+there exists a bug that will break containerd and
+force containers to periodically restart.
+
+To fix this, we setup a manual config file and set `SystemdCgroup` to `true`.
+```
+mkdir -p /etc/containerd/
+containerd config default > /etc/containerd/config.toml
+sed -i -e 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+systemctl restart containerd
 ```
 
 ### Disable Swap
@@ -116,12 +141,12 @@ To see what the default values are for any given config option, run:
 kubeadm config print init-defaults
 ```
 
-Here is an example command to create a cluster:
+Here is an example command to create a cluster.
 ```sh
 kubeadm init --control-plane-endpoint=kube1.test.lib.msu.edu \
              # IP address to say API server is listening on
              --apiserver-advertise-address 35.8.223.999 \
-             # CIDR address range to use
+             # CIDR address range to use (a specific CIDR may be required for certain networks)
              --pod-network-cidr 10.244.0.0/16
 ```
 
@@ -129,6 +154,61 @@ This will precheck and ensure your node is configured correctly
 before proceeding. If your node isn't ready, it will display
 errors indicating what you still need to do, but it won't fix
 the problems. That's up to you!
+
+*Warning:* While there is a `kubeadm reset` command that is supposed
+to reset a node back to a pre-configured, pre-cluster state, it does
+a partial job at best. Make certain you get all you configurations
+correct for your first `kubeadm init` command and it may save you
+some headaches.
+
+## Controlling the Cluster
+Where configuring the cluster is done via `kubeadm`, controlling the cluster
+uses `kubectl`. The `kubectl` command does not have to be run on a node
+in the cluster as Kubernetes is API driven, so you can configure it to run
+anywhere (network restriction permitting).
+
+### Configuration
+The configuration for `kubectl` is located in `$HOME/.kube/config` and
+needs to be setup before using `kubectl`.
+
+If you are using `kubectl` (as we are in this example), the config for the
+newly created cluster can be found at `/etc/kubernetes/admin.conf`. You can
+grab this file for use as your config.
+
+```
+# Setup a user's config
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+# Or temporarily for root user
+export KUBECONFIG=/etc/kubernetes/admin.conf
+```
+
+If all worked well, you should be able to see your node via:
+```
+kubectl get nodes
+```
+
+By default, control-plane nodes will not schedule pods. If you want
+control-plane nodes, you'll need to:
+```
+kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+```
+
+Your cluster won't work, as no networking has
+been setup. The status of the node is `NotReady`. You'll need to
+select and deploy the networking of your choice.
+
+For now, we'll setup networking using _Flannel_.
+```
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+```
+
+To see pods running, including the `kube-system` namespace:
+```
+kubectl get pods --all-namespaces
+```
 
 ## Networking
 
@@ -150,7 +230,7 @@ many use cases.
 
 ### Calico
 Considered a more flexible and advanced option for networking, claiming
-to be a performance option.
+to be a performance option with support for security policies.
 
 * https://github.com/projectcalico/calico
 
