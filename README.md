@@ -1,7 +1,6 @@
-# Kubernetes Documentation
-{:.no_toc}
+<h1>Kubernetes Documentation</h1>
 
-{:toc}
+[[_TOC_]]
 
 ## What is Kubernetes
 
