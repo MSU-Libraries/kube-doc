@@ -1,4 +1,4 @@
-<h1>Kubernetes Documentation</h1>
+# Kubernetes Documentation
 
 [[_TOC_]]
 
@@ -36,7 +36,7 @@ setup with Ubuntu 22.04.
 * `kube2.test.lib.msu.edu`, `35.8.223.112`
 * `kube3.test.lib.msu.edu`, `35.8.223.113`
 
-### Install Container Runtime
+### Container Runtime
 Kubernetes requires a CRI available, as noted above. We can use `containerd`
 for this purpose. On Ubuntu, this can be installed via:
 ```
@@ -58,8 +58,11 @@ systemctl restart containerd
 
 ### Disable Swap
 While modern K8s does have some support for swap memory, older versions will
-not work at all with any swap space. To avoid issue, you can disable swap
-entirely.
+not work at all with any swap space. Swap space causes non-trivial problems
+for Kubernetes when it wants to provide resource guarantees, so by default it
+refuses to run when swap is available.
+
+To avoid issue, you can disable swap entirely.
 ```
 swapoff -a
 # Then comment out swap mounts from /etc/fstab
@@ -180,19 +183,40 @@ correct for your first `kubeadm init` command and it may save you
 some headaches.
 
 ### Firewalls
-If you have firewalls enabled, such as `ufw`, you will need to allow the
-pod network talk to your control plane API. For our example case:
+If you have firewalls enabled, such as `ufw`, you will need to allow
+[certain traffic through](https://kubernetes.io/docs/reference/networking/ports-and-protocols/).
+
+The Kubernetes API runs on port `6443` by default and is used by both
+Kubernetes clients (like `kubectl`) and the nodes themselves.
+
+_However_, you may need additional ports open depending on your
+particular cluster. Some networking configurations require
+additional ports and you will need to allow those thorugh.
+
+One quick-and-dirty solution is to allow all traffic from all cluster
+nodes to all other cluster nodes, then only allow external
+traffic to the API port for external IPs which would be issuing
+commands to the cluster.
+
+_Example `ufw` rules for node at `35.8.223.111`_:
 ```
-ufw allow from 10.244.0.0/16 to 35.8.223.112 port 6443 proto tcp
+ufw allow from 10.244.0.0/16 to 35.8.223.111
+ufw allow from 35.8.223.112 to 35.8.223.111
+ufw allow from 35.8.223.113 to 35.8.223.111
 ```
 
-## Controlling the Cluster
+_Example `ufw` rule to allow API access from external IP `1.2.3.999` to control plane node at 35.8.223.111_:
+```
+ufw allow from 1.2.3.999 to 35.8.223.111 port 6443 proto tcp
+```
+
+### Controlling the Cluster
 Where configuring the cluster is done via `kubeadm`, controlling the cluster
 uses `kubectl`. The `kubectl` command does not have to be run on a node
 in the cluster as Kubernetes is API driven, so you can configure it to run
 anywhere (network restriction permitting).
 
-### Configuration
+#### Configuration
 The configuration for `kubectl` is located in `$HOME/.kube/config` and
 needs to be setup before using `kubectl`.
 
@@ -200,7 +224,7 @@ If you are using `kubectl` (as we are in this example), the config for the
 newly created cluster can be found at `/etc/kubernetes/admin.conf`. You can
 grab this file for use as your config.
 
-```
+```sh
 # Setup a user's config
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
@@ -235,7 +259,7 @@ To see pods running, including the `kube-system` namespace:
 kubectl get pods --all-namespaces
 ```
 
-## Networking
+### Networking
 
 Kubernetes doesn't prescribe a set of networking tools to use either, rather
 if uses the _Container Network Interface_ (CNI) to to setup virtual
@@ -247,24 +271,24 @@ the rest? Open source mean you have options!
 
 Popular options for networking are listed below:
 
-### Flannel
+#### Flannel
 Flannel is a simple to setup networking option which works well for
 many use cases.
 
 * https://github.com/flannel-io/flannel
 
-### Calico
+#### Calico
 Considered a more flexible and advanced option for networking, claiming
 to be a performance option with support for security policies.
 
 * https://github.com/projectcalico/calico
 
-### Cillium
+#### Cillium
 Designed to handle large and complex networks more efficiently.
 
 * https://github.com/cilium/cilium
 
-### Some Additional Options
+#### Some Additional Options
 More networking solutions for those interested in researching them.
 
 * Weave Net: https://github.com/weaveworks/weave
@@ -278,5 +302,16 @@ For an even more extensive list, check out the readme on the
 Note that when using a cloud networking provider, you may not have
 any choice in what your networking option will be.
 
-## Additional Cluster Nodes
+### Additional Cluster Nodes
+
+### Cloud Hosted Kubernetes
+
+## What is in a Cluster
+
+* kubelet service
+* proxy, dns, apiserver, controller, etcd
+
+### Namespaces
+
+* contexts?
 
