@@ -303,6 +303,58 @@ Note that when using a cloud networking provider, you may not have
 any choice in what your networking option will be.
 
 ### Additional Cluster Nodes
+Upon success of first running `kubeadm init`, you may have noticed two messages
+display about adding new nodes to the cluster. Something like the following:
+```
+You can now join any number of control-plane nodes by copying certificate authorities
+and service account keys on each node and then running the following as root:
+
+  kubeadm join kube1.test.lib.msu.edu:6443 --token 1up71d.lz7pxx6byine4tn0 \
+	--discovery-token-ca-cert-hash sha256:76e3fd8935183ed3e4ce91be9d1ccd314af41426e1a3bde4f182bb6736c613dc \
+	--control-plane
+
+Then you can join any number of worker nodes by running the following on each as root:
+
+kubeadm join kube1.test.lib.msu.edu:6443 --token 1up71d.lz7pxx6byine4tn0 \
+	--discovery-token-ca-cert-hash sha256:76e3fd8935183ed3e4ce91be9d1ccd314af41426e1a3bde4f182bb6736c613dc
+```
+
+These provided instructions on adding nodes to the cluster. Quite simply, run
+one of the commands on the new node to add that node to the cluster.
+Note the difference between the two commands is one has `--control-plane` and
+the other does not. If the `--control-plane` flag is used, the new
+node will be an additional control plane; without that flag, the
+new node will be a worker.
+
+One additional caveat. Control plane nodes also require the control plane certificates
+to be able to join. This can be done [manually](#https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/high-availability/#manual-certs), or via storing them in a Kubernetes
+Secret (more on Secrets later). To use certificates in a Secret, you would need
+to add the `--upload-certs` flag to the `kubeadm init` command above. Or if you
+forgot, you can run the following afterwards:
+```
+kubeadm init phase upload-certs --upload-certs
+```
+
+This will output a certificate key, which you can then use as part of your
+`kubeadm join` command. For example:
+```
+kubeadm join kube1.test.lib.msu.edu:6443 --token 1up71d.lz7pxx6byine4tn0 \
+	--discovery-token-ca-cert-hash sha256:76e3fd8935183ed3e4ce91be9d1ccd314af41426e1a3bde4f182bb6736c613dc \
+	--control-plane \
+    --certificate-key bd8a57edb8de39921dc747e9bb0dd2c34a82aa4a87ed5195fb4f705f9c66fa01
+```
+
+Before attempting to join a new code, ensure your [firewalls](#firewalls) are
+configured correctly.
+
+To create a new token and output the command needed to join a new node, run the
+following from an existing control plane node:
+```
+kubeadm token create --print-join-command
+```
+
+It will output the command to join a node as a worker. Again, if you want the new
+node to be a control plane, add the `--control-plane` flag.
 
 ### Cloud Hosted Kubernetes
 
