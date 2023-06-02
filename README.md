@@ -15,9 +15,12 @@ can run.
 
 ## Terminology Reference
 
+* **Node** - a machine in the Kubernetes cluster.
+* **Control plane** - A master node in the cluster. It runs essential cluster services and can receive API calls.
+* **Worker** - An unprivileged node (not a control plane) on which pods can be scheduled to run.
+* **Pod** - One or more containers that are deployed onto a node as a group. Containers in a single pod cannot be split across node and will always be kept together.
+
 TODO
-* node
-* control plane / worker
 * label
 * role
 * namespace
@@ -482,12 +485,16 @@ Provides the REST API server which `kubectl` and other services connect to.
 There should be an _apiserver_ on every control plane node.
 
 **kube-controller-manager**  
-TODO
+Monitors cluster state versus desired state, making changes when needed
+to move the cluster toward the desired state.
 There should be a _controller_manager_ on every control plane node.
 
 **etcd**  
-TODO
-There should be an _etcd_ on every control plane node.
+A distributed key-value store used to store Kubernetes objects. Essentially,
+this is the datastore for the cluster.
+There should be an _etcd_ on every control plane node. However, you can also
+setup Kubernetes to use an external _etcd_ store as well, which is not covered
+by this documentation.
 
 ### Roles
 
