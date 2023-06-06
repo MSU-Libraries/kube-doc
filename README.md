@@ -2,6 +2,8 @@
 
 _Written for Kubernetes v1.27_
 
+Assumed understanding and familiarity with containerization.
+
 [[_TOC_]]
 
 ## What is Kubernetes
@@ -15,20 +17,61 @@ can run.
 
 ## Terminology Reference
 
+These definitions may be covered in more depths further on in this guide, but there are provided
+here for quick reference.
+
 * **Node** - a machine in the Kubernetes cluster.
 * **Control plane** - A master node in the cluster. It runs essential cluster services and can receive API calls.
 * **Worker** - An unprivileged node (not a control plane) on which pods can be scheduled to run.
 * **Pod** - One or more containers that are deployed onto a node as a group. Containers in a single pod cannot be split across node and will always be kept together.
+* **Spec** - A definition of an object, usually presented in Yaml format. Often prefixed with the kind of spec (e.g. DeploymentSpec).
+* **Namespace** - A scope of where objects (e.g. pods) exists. The default namespace is `default`. Cluster related pods are in the namespace `kube-system`. You can put all the pods for your specific project into a single namespace to keep it separate from other projects in the same cluster. This also allows for you to query info from just a specific namespace rather than the entire cluster.
+* **Context** - A client side set of settings, useful for setting preferences and connection info. In each context you create, you can set things like a different default namespace, a different user to connect as, or a different cluster to use.
+* **Label** - A key/value pair which is associated with an object in Kubernetes. They can be used for convenience, but also as settings or flags which help the cluster manage objects. They can be queried and filtered and are generally used to identify objects in the cluster.
+* **Annotation** - A key/value pair for arbitrary data which is _not_ used to identify objects. Annotation cannot be queried or filtered, and are generally used for client libraries or tools.
+* **Taint** - A key/value pair setting on a node which prevents pods from starting on that node, or can even evict a pod from the node, depending on the taint value. By default, there is a taint on control planes which prevents pods from running on them.
+* **Toleration** - A definition in a pod that allows the pod to be scheduled on a node with specific taint(s).
+* **Object** - A persistant entity within Kubernetes (e.g. pod, deployments, events, etc.) 
+* **Role** - Refers to Role-Based Access Controls (RBAC). Roles are useful for defining groups and limiting permissions within your cluster. Alternatively, can refer to the `node-role` taint which is used to identify a control plane.
+* **Resource** - Either used as a _resource type_ when used in an API call. Alternatively, it can refer to computing resources, such as CPU, RAM, or disk.
+* **ReplicaSet** - Ensures a certain number of pods are running at once. Generally, it is recommended to use _Deployment_ instead of _ReplicaSets_.
+* **Deployment** - A means of handling _ReplicaSets_ which include the ability to do rolling updates. A deployment is version aware of the pods, and can scale newer pods up to replace older pods.
+* **Service** - Defines a way of exposing an application to the network.
+* **DaemonSet** -
+* **Jobs** -
+* **ConfigMap** -
+* **Secret** -
+* **StatefulSet** -
 
-TODO
-* label
-* role
-* namespace
+## Basics of Kubernetes
 
-## How Kubernetes Works
+At the heart of Kubernetes, 
+TODO deploy pods, which are groups of containers, into a cluster.
+Cluster is a group of nodes, some of which run extra services to maintain/manage the cluster (Control plane)
 
-TODO
-* API driven
+A typical kubernetes task is to "apply" a specification. Basically, a Yaml file defining
+something, like a service. The Yaml specification can be applied (telling K8s to "make it happen),
+edited in place if it already exists (same effect as apply), or deleted ("make it go away").
+
+## How Kubernetes Operates
+
+Everything in Kubernetes is an object which is presented via an REST API interface.
+We will be using CLI tools to managed our Kubernetes cluster, but these are merely
+making a series of API call behind the scenes. The same actions could be completed
+via `curl` commands, if you knew specifically what API calls were needed.
+
+Of course, being that Kubernetes is API driven, there are a number of options available
+to manage your cluster and the contents within it. However, within this guide, we'll
+be using these official tools/services:
+
+* `kubeadm`: To provision and build your cluster.
+* `kubectl`: To issue commands to your cluster.
+* `kubelet`: The component on each cluster node which manages that specific node.
+
+When creating objects in Kubernetes, they are often represented by a subdomain
+of your cluster or a path in your API. As such, there are some [restrictions](https://kubernetes.io/docs/concepts/overview/working-with-objects/names/)
+on naming. A general rule-of-thumb, avoid any names or labels which might conflict
+with being embedded in a URL.
 
 ## Runtime
 
@@ -61,7 +104,7 @@ for this purpose. On Ubuntu, this can be installed via:
 apt install -y containerd
 ```
 
-**Bug Fix**  
+#### Bug Fix
 At least [on Debian/Ubuntu](https://github.com/kubernetes/kubernetes/issues/110177),
 there exists a bug that will break containerd and
 force containers to periodically restart.
@@ -74,11 +117,26 @@ sed -i -e 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config
 systemctl restart containerd
 ```
 
+#### Interacting with containerd
+Direct management of `containerd` is not covered here, except to say you can use
+the `crictl` command to interact with `containerd`. You may have to specify the
+socket in order to do so.
+
+Example `crictl` commands:
+```sh
+# List pods
+crictl -r unix:///run/containerd/containerd.sock pods
+# Stop a pod
+crictl stopp POD_ID
+# Remove a pod (after it has been stopped)
+crictl rmp POD_ID
+```
+
 ### Disable Swap
 While modern K8s does have some support for swap memory, older versions will
 not work at all with any swap space. Swap space causes non-trivial problems
-for Kubernetes when it wants to provide resource guarantees, so by default it
-refuses to run when swap is available.
+for Kubernetes when it wants to provide resource guarantees (e.g. RAM), so by
+default it refuses to run when swap is available.
 
 To avoid issue, you can disable swap entirely.
 ```
@@ -112,14 +170,9 @@ EOF
 systemctl restart systemd-sysctl
 ```
 
-Tools you will need include:
-* `kubeadm`: To provision and build your cluster.
-* `kubectl`: To issue commands to your cluster.
-* `kubelet`: The component on each cluster node which manages that specific node.
-
 ### Debian Install
 
-Add the signing key need for the package repository.
+Let's install `kubelet`, `kubeadm`, and `kubectl`. First, add the signing key need for the package repository.
 ```
 curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-archive-keyring.gpg
 ```
@@ -137,14 +190,14 @@ apt install kubeadm kubectl kubelet
 
 ### Snap Install
 
-All three tools can be installed using `snap` on Ubuntu:
+All three tools can be also installed using `snap` on Ubuntu:
 ```
 snap install --classic kubeadm
 snap install --classic kubectl
 snap install --classic kubelet
 ```
 
-Author note: My limited testing with snap these packages resulted in a sub-optimal experience.
+Author note: My limited testing with snap these packages resulted in a sub-optimal experience. You're on your own here.
 
 ### Manual Install
 
@@ -168,6 +221,9 @@ snap refresh --hold kubeadm
 snap refresh --hold kubectl
 ```
 
+While designed to support interoperability within one minor version
+(e.g. 1.12 compatible with 1.13), but always read the upgrade notes.
+
 Kubernetes is known for making fairly significant changes in new versions.
 Old features can deprecated and removed and new changes are introduced 
 often. Note the version of Kubernetes this documentation was written for
@@ -182,7 +238,7 @@ changes completely before proceeding.
 ## Initialize the Cluster
 If everything else is ready, you can create a new cluster by
 initializing a master node. On the master node, run the
-`kube init` command.
+`kubeadm init` command.
 
 There are many customizations you can set when creating your cluster,
 so you may want to refer to the `kubeadm init` [documentation](https://kubernetes.io/docs/reference/setup-tools/kubeadm/kubeadm-init/).
@@ -332,7 +388,7 @@ a needed feature, Flannel is a good place to start.
 Due to its minimal setup, Flannel makes a great choice for guides such as
 this one, as it reduces the number of extra things that need to be explained
 and configured. Considering there is so much else being covered in this
-documentation, use Flannel for the CNI choice in our examples keep us
+documentation, use of Flannel for the CNI choice in our examples keep us
 from introducing extra complexity while learning.
 
 * https://github.com/flannel-io/flannel
@@ -428,12 +484,49 @@ have them in odd numbers (i.e. 3, 5, 7). This should help ensure a majority
 quorum can be maintained in the even of a control plane loss (avoiding a split
 vote for new leaders).
 
+#### Load Balancing Control Planes
+
+Just because you added extra control plane nodes, it doesn't mean your cluster
+will use them. You then have to setup a load balancer of some sort for API
+access. How you setup the load balancer [is up to you](https://github.com/kubernetes/kubeadm/blob/main/docs/ha-considerations.md#options-for-software-load-balancing).
+
+If you are setting up a new cluster, you should try creating a
+[high-availability cluster from scratch](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/high-availability/). The instructions below are for attempting to add a control plane to an
+existing cluster.
+
+Once your balancer is ready, you'll
+need to update the following ([much](https://blog.scottlowe.org/2019/08/12/converting-kubernetes-to-ha-control-plane/)
+[credit](https://blog.scottlowe.org/2019/07/30/adding-a-name-to-kubernetes-api-server-certificate/) to Scott Lowe):
+
+* For all nodes (worker and control plane): Update `/etc/kubernetes/kubelet.conf` to change `server:` to your load balancer.
+* For control plane nodes: Update `/etc/kubernetes/admin.conf` to change `server:` to your load balancer.
+* For control plane nodes: Update `/etc/kubernetes/controller-manager.conf` to change `server:` to your load balancer.
+* For control plane nodes: Update `/etc/kubernetes/scheduler.conf` to change `server:` to your load balancer.
+* On a control plane node: Update `kube-proxy` ConfigMap by running `kubectl -n kube-system edit cm kube-proxy` and change the `server:` to your load balancer.
+* On a control plane node: Update `kube-public` ConfigMap by running `kubectl -n kube-public edit cm cluster-info` and change the `server:` to your load balancer.
+* Update the `kube-system` ConfigMap by:
+  * Downloading the current config: `kubectl -n kube-system get configmap kubeadm-config -o jsonpath='{.data.ClusterConfiguration}' > /tmp/kubeadm.yaml`
+  * Change the `controlPlaneEndpoint:` to your load balancer.
+  * Add/update the `certSANs:` key under `apiServer:` to add any additional Subject Alternate Names (SANs) to the cluster's TLS certificate. \
+    ```
+    apiServer:
+      certSANs:
+      - "api.cluster.test.lib.msu.edu"
+      - "lb.mycluster.example.edu"
+      - "192.168.2.254"
+    ```
+  * If changing SANs, remove the existing certificates: `mv /etc/kubernetes/pki/apiserver.{crt,key} /tmp/`
+  * If changing SANs, regenerate new certificates: `kubeadm init phase certs apiserver --config /tmp/kubeadm.yaml`
+  * If changing SANS, restart the `kube-apiserver` pod(s) [by stopping/removing them](#interacting-with-containerd). (Kubelet will restart them.)
+  * Re-upload your config to the cluster: `kubeadm config upload from-file --config /tmp/kubeadm.yaml`
+* Restart `kubelet` and the cluster pods on each node. You can do via `systemd restart kubelet` and [by stopping/removing pods](#interacting-with-containerd) for each one in the `kube-system` namespace, or alternatively just restart the node.
+
 ### Cloud Hosted Kubernetes
 
 As you can probably tell by now, setting up and running Kubernetes cluster is
 not a trivial task. Many people recommend NOT configuring your own Kubernetes
 clusters and just leave that task to cloud providers. These are often
-referred to as Kubernetes-as-a-service.
+referred to as Kubernetes-as-a-service (KaaS).
 
 Most cloud service providers have a fast way to provision and configure a
 ready-to-use Kubernetes cluster, where you can start deploying
@@ -496,23 +589,53 @@ There should be an _etcd_ on every control plane node. However, you can also
 setup Kubernetes to use an external _etcd_ store as well, which is not covered
 by this documentation.
 
-### Roles
-
-TODO A node role is just a label with the format node-role.kubernetes.io/<role>
-kubectl label node cb2.4xyz.TODO.com node-role.kubernetes.io/worker=worker
-
-TODO removing role
-kubectl label node cb2.4xyz.TODO.com node-role.kubernetes.io/worker-
-
 ### Namespaces
 
-* contexts?
+Namespace provide a place where names of objects must be unique. However, any given
+name could be reused in an alternate namespace.
+
+Cluster pods are in the `kube-system` namespace, where the default namespace is
+aptly called `default`.
+
+To create a namespace, first create a namespace spec file. E.g. `~/namespace-best-app.yaml`:
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: best-app
+  labels:
+    name: best-app
+```
+
+Use `kubectl` to make the namespace:
+```sh
+kubectl apply -f ~/namespace-best-app.yaml
+```
+
+When specifying a `kubectl` command, you can use the `-n` flag to specify the namespace to use:
+```
+# Get pods from 'default' namespace
+kubectl get pods
+
+# Get pods from 'best-app' namespace
+kubectl -n best-app get pods
+```
+
+To not filter or limit by namespace, you can use the `--all-namespace` or `-A` flag:
+```
+# Get all pods across all namespaces
+kubectl get pods -A
+```
+
+To see all current namespaces:
+```
+kubectl get namespaces
+```
 
 ## kubeadm Commands
 
 TODO common flags
  * --help
- * --all-namespaces -A
  * -n NAMESPACE
  * -o wide (more columns for `kubectl get`)
  * -o json (display json response; useful for passing into jq)
@@ -520,7 +643,6 @@ TODO common flags
 
 TODO filtering
 `kubectl get pods --field-selector spec.nodeName=node1`
-
 
 TODO common and useful commands, links to docs
 
@@ -538,11 +660,36 @@ TODO common and useful commands, links to docs
 
 `kubectl scale deployments.apps -n kube-system coredns --replicas=3 deployment.apps/coredns scaled`
 
+`kubectl logs -n kube-system <podName>`
+
+`kubectl -n kube-system edit cm <cmName>` Edit config map
+
+`kubectl exec -i -t shell-demo -- /bin/bash` # exec in pod with single container (no need to specify)
+
+`kubectl exec -i -t my-pod --container main-app -- /bin/bash` # selecting container from multi-container pod
+
 ## Helm: The Kubernetes Package Manager
 
 TODO
 
 ## Helpful Tips
+
+### List All the Things
+
+List objects
+```
+kubectl api-resources
+```
+
+Available API versions
+```
+kubectl api-resources
+```
+
+List built-in roles
+```
+kubectl get clusterroles
+```
 
 ### Autocomplete for kubectl
 Enabling tab autocomplete can make it considerably easier to use `kubectl`. To
@@ -554,3 +701,64 @@ source <(kubectl completion bash)
 # Enable kubectl autocomplete system wide
 echo "source <(kubectl completion bash)" > /etc/bash_completion.d/kubectl
 ```
+
+### Taints and Tolerations
+
+Taints flag a node such that it restricts scheduling of pods onto that node.
+We first saw this with our control plane node, which by default didn't allow
+pods to be scheduled there. Crucial `kube-system` pods are exempted from taints.
+
+Taints can have three possible effects:
+
+* `NoSchedule`: Prevent the node from scheduling new pods.
+* `PreferNoSchedule`: Avoid scheduling on this node, but not outright prevent it.
+* `NoExecute`: Not only prevent pods from being scheduled on this node, but evict any already running pods off this node.
+
+The other side of taints are tolerations. Tolerations are defined in the specs and allow that spec
+to tolerate the taint, and thus be scheduled on the tainted node.
+
+One example of this might be to handle hardware differences of nodes. Say one node has powerful GPU installed
+and you prefer to only run GPU heavy pods there. You can set a taint to handle this.
+
+```
+kubectl taint nodes my-gpu-node1 gpu=available:NoSchedule
+```
+
+This taint will prevent pods from being scheduled on `my-gpu-node1`. Then in our deployment
+we could add a toleration for our GPU using app.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # -- snip --
+spec:
+  # -- snip --
+  template:
+    metadata:
+      # -- snip --
+    spec:
+      containers:
+      - name: gpu-runner
+        image: gpu-processor
+      tolerations:
+      - key: gpu
+        operator: Equal
+        value: available
+        effect: NoSchedule
+```
+
+This deployment would now be schedulable onto our tainted node without issue.
+
+### Metrics
+TODO
+kubectl top nodes
+kubectl top pods -A
+Single CP: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+HA Cluster: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/high-availability.yaml
+
+### From Compose to K8s using Kompose
+
+A tool to try to convert docker-compose files to Kubernetes configs: https://kompose.io/
+
+Unlikely that you would want to use the output, but it might help in the process.
