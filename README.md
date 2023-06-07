@@ -24,7 +24,7 @@ here for quick reference.
 * **Control plane** - A master node in the cluster. It runs essential cluster services and can receive API calls.
 * **Worker** - An unprivileged node (not a control plane) on which pods can be scheduled to run.
 * **Pod** - One or more containers that are deployed onto a node as a group. Containers in a single pod cannot be split across node and will always be kept together.
-* **Spec** - A definition of an object, usually presented in Yaml format. Often prefixed with the kind of spec (e.g. DeploymentSpec).
+* **Spec** - A definition of an object, usually presented in Yaml format. Often prefixed with the kind of spec (e.g. Deployment Spec).
 * **Namespace** - A scope of where objects (e.g. pods) exists. The default namespace is `default`. Cluster related pods are in the namespace `kube-system`. You can put all the pods for your specific project into a single namespace to keep it separate from other projects in the same cluster. This also allows for you to query info from just a specific namespace rather than the entire cluster.
 * **Context** - A client side set of settings, useful for setting preferences and connection info. In each context you create, you can set things like a different default namespace, a different user to connect as, or a different cluster to use.
 * **Label** - A key/value pair which is associated with an object in Kubernetes. They can be used for convenience, but also as settings or flags which help the cluster manage objects. They can be queried and filtered and are generally used to identify objects in the cluster.
@@ -37,25 +37,55 @@ here for quick reference.
 * **ReplicaSet** - Ensures a certain number of pods are running at once. Generally, it is recommended to use _Deployment_ instead of _ReplicaSets_.
 * **Deployment** - A means of handling _ReplicaSets_ which include the ability to do rolling updates. A deployment is version aware of the pods, and can scale newer pods up to replace older pods.
 * **Service** - Defines a way of exposing an application to the network.
-* **DaemonSet** -
-* **Jobs** -
-* **ConfigMap** -
-* **Secret** -
-* **StatefulSet** -
+* **Ingress** - TODO
+* **IngressController** - TODO
+* **DaemonSet** - Ensures a single pod is running on each node in the cluster.
+* **Probe** - TODO
+* **Job** - TODO
+* **CronJob** - TODO
+* **ConfigMap** - TODO
+* **Secret** - TODO
+* **Volume** - TODO
+* **StatefulSet** - TODO
 
 ## Basics of Kubernetes
 
-At the heart of Kubernetes, 
-TODO deploy pods, which are groups of containers, into a cluster.
-Cluster is a group of nodes, some of which run extra services to maintain/manage the cluster (Control plane)
+At its heart, Kubernetes schedules containers to run and keeps them running
+according to a given set of specifications. These containers are run on nodes
+that exist in the Kubernetes cluster, which can be small or quite large.
 
-A typical kubernetes task is to "apply" a specification. Basically, a Yaml file defining
-something, like a service. The Yaml specification can be applied (telling K8s to "make it happen),
-edited in place if it already exists (same effect as apply), or deleted ("make it go away").
+A typical kubernetes task is to "apply" a specification (or spec). Basically, a
+spec is a Yaml file defining something, like a service. The Yaml specification
+can be applied (telling K8s to "make it happen"), edited in place if it already
+exists (same effect as apply), or deleted ("make it go away").
+
+Kubernetes typically operates in a _declarative_ manner. Rather than specify
+the steps needed to get to an end state, you declare what you want the end state
+to be. It is then up to Kubernetes to decide what steps are needed.
+
+The alternative is to be _imperative_. While Kubernetes supports some imperative
+actions, it is recommended to be declarative whenever possible.
+
+For example, Kubernetes can `apply` on a given specification (declarative). This means
+Kubernetes will work to make that specification happen. If that specification was
+previously made to happen, Kubernetes will verify that is the case. The `apply` succeeds.
+
+However, Kubernetes can also `create` a given specification (imperative). This tells
+Kubernetes to create something defined by the spec. If what is defined in the spec
+already exists, even in only in part, then the `create` will fail. Kubernetes cannot
+create something that already exists.
+
+Another example, once you have containers running, you will likely want to open
+up a port to allow connections into your containers. You could declaratively create
+a service specification file and `apply` it. Or you could imperatively use the
+`kubectl expose` command to create the service.
 
 ## How Kubernetes Operates
 
-Everything in Kubernetes is an object which is presented via an REST API interface.
+Everything in Kubernetes is an object which is presented via an REST API interface
+which returns JSON data responses. While the API uses JSON, Kubernetes configs are
+almost exclusively Yaml.
+
 We will be using CLI tools to managed our Kubernetes cluster, but these are merely
 making a series of API call behind the scenes. The same actions could be completed
 via `curl` commands, if you knew specifically what API calls were needed.
@@ -73,17 +103,6 @@ of your cluster or a path in your API. As such, there are some [restrictions](ht
 on naming. A general rule-of-thumb, avoid any names or labels which might conflict
 with being embedded in a URL.
 
-## Runtime
-
-Kubernetes will run on a number of Container Runtimes which implement
-the _Container Runtime Interface_ (CRI). The two most well known are:
-
-* containerd
-* CRI-O
-
-The containerd CRI is actually already installed if you have Docker
-installed, as Docker Engine also makes use of containerd.
-
 ## Setup & Install
 
 Provision your nodes and ensure `/etc/hosts` is set up with all node
@@ -98,8 +117,19 @@ setup with Ubuntu 22.04.
 * `kube3.test.lib.msu.edu`, `35.8.223.113`
 
 ### Container Runtime
-Kubernetes requires a CRI available, as noted above. We can use `containerd`
-for this purpose. On Ubuntu, this can be installed via:
+Kubernetes will run on a number of Container Runtimes which implement
+the _Container Runtime Interface_ (CRI). The two most well known are:
+
+* containerd
+* CRI-O
+
+The containerd CRI is actually already installed if you have Docker
+installed, as Docker Engine also makes use of containerd. Kubernetes used
+to be able to use Docker as its runtime, which allowed for use of `docker`
+commands to interact with Kubernetes managed containers. This feature
+has been removed in more modern versions of Kubernetes.
+
+For our guide, we can use `containerd`. On Ubuntu, this can be installed via:
 ```
 apt install -y containerd
 ```
@@ -310,7 +340,7 @@ newly created cluster can be found at `/etc/kubernetes/admin.conf`. You can
 grab this file for use as your config.
 
 ```sh
-# Setup a user's config
+# Setup a user's config so their kubectl will connect to the cluster
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
@@ -324,9 +354,9 @@ If all worked well, you should be able to see your node via:
 kubectl get nodes
 ```
 
-By default, control-plane nodes will not schedule pods. They come
-with a taint (more on taints later) which prevents scheduling of
-pods to run.
+By default, control plane nodes will not schedule pods. Control
+planes come with a taint (more on taints later) which prevents
+scheduling of pods to run.
 
 Running this:
 ```sh
@@ -349,13 +379,13 @@ remove the taint.
 kubectl taint nodes --all node-role.kubernetes.io/control-plane-
 ```
 
-Even after this, your cluster won't work as no networking has
+Even after this, your cluster won't work as networking has not
 been setup. You might have noticed the status of the node
 is `NotReady`. You'll need to select and deploy the networking
 of your choice before things will finally be working.
 
 For now, we'll setup networking using _Flannel_ (we'll answer "Why Flannel?" shortly,
-and also cover the `kube apply` command later in this document).
+and also go more into the `kube apply` command later in this document).
 ```
 kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 ```
@@ -554,7 +584,7 @@ being the base on which everything else runs. And on each node runs a CRI
 Also on each node, the _kubelet_ runs. This is not a container or pod, but
 a service running on the host machine. Think of it as the client or agent of
 Kubernetes cluster. It doesn't run the containers; the CRI does that (`containerd`
-in our example case). But it does receive specifications for pods (aka PodSpecs)
+in our example case). But it does receive specifications for pods (aka Pod Specs)
 and makes certain they are running as expected.
 
 Then each nodes makes pods depending on its role. Each of these will be within
@@ -639,6 +669,7 @@ TODO common flags
  * -n NAMESPACE
  * -o wide (more columns for `kubectl get`)
  * -o json (display json response; useful for passing into jq)
+ * -o yaml
  * --show-labels (show labels for `get pods`)
 
 TODO filtering
@@ -652,21 +683,214 @@ kubectl get nodes -o json
 kubectl get pods -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.spec.nodeName,HOSTIP:.status.hostIP,PHASE:.status.phase,START_TIME:.metadata.creationTimestamp --sort-by=.metadata.creationTimestamp --no-header
 ```
 
+## Writing Specs
+
+Objects have _specs_, which define the desired state of that object. It is up to
+the control plane to take actions to ensure the _status_, or current state, is
+changed to match the spec.
+
+If you know your object kind, you can get all the info about a spec by using
+the `kubectl explain` command.
+
+To list spec fields and description about those fields for a Deployment Spec:
+```
+kubectl explain deployment
+```
+
+This only lists the top level fields of a deployment spec. To delve down
+into sub-fields, you can `.` delimit the fields you are interested in.
+```
+kubectl explain deployment.spec
+kubectl explain deployment.spec.strategy
+```
+
+To get a full tree of a spec layout in a single output, you can use the `--recurse` flag:
+```
+kubectl explain service --recursive
+```
+
+While the underlying API uses JSON, spec files are written in Yaml. As
+Yaml files support multiple Yaml structures per file, you can combine
+objects together when appropriate in a single file.
+
+An example Yaml config with a Deployment Spec and a Service Spec.
+The service defined provides web access to the `httpd` containers
+from the deployment.
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-web-deployment
+spec:
+  selector:
+    matchLabels:
+      my-app: my-website
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        my-app: my-website
+    spec:
+      containers:
+      - name: httpd
+        image: httpd:2.4
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+spec:
+  selector:
+    my-app: my-website
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+```
+
+Specs can become quite large and complex. While putting multiple objects
+into a single file is possible, keeping spec definitions in separate files
+can help with keeping a more organized Kubernetes config.
+
+## Labels
+
+TODO
+
+get specific label values
+```
+kubectl get pods -Lapp -Ltier -Lrole
+```
+
+filter by label values (i.e. selector)
+```
+kubectl get pods -lapp=guestbook,role=slave
+# supports k=v,k!=v,k in (v1,v2), key notin (v1,v2)
+           key, (meaning key is set)
+           !key (meaning key is not set)
+```
+
+update labels (filter by app, update tier)
+```
+kubectl label pods -l app=nginx tier=fe
+```
+
+it's not just you who uses labels, kubernetes uses labels/selectors internally to manage things
+
+While not a requirement, Kubernetes does have a set of
+[recommended labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
+for common use. These include frequent needs to describe the application and it's purpose, such as:
+
+* `app.kubernetes.io/name`
+* `app.kubernetes.io/version`
+* `app.kubernetes.io/part-of`
+
+## Objects
+While there are quite a different kinds of Kubernetes objects, here are some key ones you
+may want to use.
+
+### Deployment
+TODO
+
+`kubectl rollout` # status, pause, resume, history, undo
+
+strategies: recreate, rollingupdate
+ - `minReadySeconds`
+ - `progressDeadlineSeconds`
+
+
+### DaemonSet
+TODO
+
+### ConfigMap and Secrets
+TODO
+
+Updating either of these results in immediate update to running containers.
+If the running app can re-read the location where the data is presented, it
+would have no need to restart anything to get the updated data.
+
+Can store either:
+* utf-8 string
+* binary data in base64
+
+max size: 1 MB
+
+https://kubernetes.io/docs/concepts/configuration/configmap/
+https://kubernetes.io/docs/concepts/configuration/secret/
+
+### Service
+A service provides a way to export a port, either internally or externally. By default,
+the `type` is `ClusterIP`, which makes the port available to an IP only within the cluster.
+
+You can make a service available on a host using the `type` of `NodePort`. However,
+services can only be exposed on a limited port range using this, by default 30000-32767. 
+
+With `NodePort`, the port on each node is proxied into the service from the node's host IPs.
+
+### Ingress Controller
+TODO
+
+3 official, but many alternatives: https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/
+
+### Ingress
+TODO
+
+### Job
+TODO
+- one shot
+- parallel fixed completion
+- work queue: parallel jobs
+
+### CronJob
+TODO
+
+## Checking Pod Health
+Kubernetes uses probes to determine if a pod is up, alive, and ready to
+serve requests. By default, each probe always succeeds, so they must be
+defined if you want your pods to be monitored.
+
+### Startup Probe
+TODO
+
+### Liveness Probe
+TODO
+
+### Readiness Probe
+TODO
+
 ## kubectl Commands
 
 TODO common and useful commands, links to docs
+
+`kubectl get all`
 
 `kubectl describe deployment.apps -n kube-system coredns`
 
 `kubectl scale deployments.apps -n kube-system coredns --replicas=3 deployment.apps/coredns scaled`
 
+`kubectl edit KIND NAME`
+
 `kubectl logs -n kube-system <podName>`
+`kubectl logs -n kube-system <podName> --previous`
 
 `kubectl -n kube-system edit cm <cmName>` Edit config map
 
 `kubectl exec -i -t shell-demo -- /bin/bash` # exec in pod with single container (no need to specify)
 
 `kubectl exec -i -t my-pod --container main-app -- /bin/bash` # selecting container from multi-container pod
+
+`kubectl patch` to update API objects in place
+
+`kubectl delete`
+
+to update fields that cannot be updated, delete and re-create the resource with `replace --force`
+`kubectl replace -f https://k8s.io/examples/application/nginx/nginx-deployment.yaml --force`
+
+`kubectl scale`
+
+`kubectl autoscale`
 
 ## Helm: The Kubernetes Package Manager
 
@@ -750,6 +974,11 @@ spec:
 
 This deployment would now be schedulable onto our tainted node without issue.
 
+### Resource Requests and Limits
+TODO
+requests: resources needed to run
+limits: max resources allowed while running
+
 ### Metrics
 TODO
 kubectl top nodes
@@ -762,3 +991,6 @@ HA Cluster: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/r
 A tool to try to convert docker-compose files to Kubernetes configs: https://kompose.io/
 
 Unlikely that you would want to use the output, but it might help in the process.
+
+### MicroK8s: Easier K8s with Sane Defaults
+TODO
