@@ -40,11 +40,11 @@ here for quick reference.
 * **Ingress** - TODO
 * **IngressController** - TODO
 * **DaemonSet** - Ensures a single pod is running on each node in the cluster.
-* **Probe** - TODO
+* **Probe** - A check as to the status of a pod, used by Kubernetes to determine pod health. There are several types of probes available.
 * **Job** - TODO
 * **CronJob** - TODO
-* **ConfigMap** - TODO
-* **Secret** - TODO
+* **ConfigMap** - A key and value stored in Kubernetes. Used to store data across the cluster, such as environment variables or config files.
+* **Secret** - A key and value, similar to a ConfigMap, but used for secured data, such as security keys, passwords, or other sensitive data.
 * **Volume** - TODO
 * **StatefulSet** - TODO
 
@@ -662,6 +662,144 @@ To see all current namespaces:
 kubectl get namespaces
 ```
 
+## Volumes
+
+emptyDir: creates an empty dir when first pod is deployed, and persists on node so
+long as the pod exists, even through crashes, until that pod is restarted or removed
+from the node.
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  containers:
+  - name: my-containter
+    volumeMounts:
+    - mountPath: /cache
+      name: mycache
+  volumes:
+  - name: mycache
+    emptyDir:
+      sizeLimit: 512Mi
+```
+
+host mount: can be dangerous on multi-node k8s as no guarantee pod will always be on this node
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+spec:
+  template:
+    metadata:
+      # -- snip --
+    spec:
+      containers:
+        - name: my-deploys
+          # -- snip --
+          volumeMounts:
+            - name: mymount
+              mountPath: /opt/container_path
+      volumes:
+        - name: mymount
+          hostPath:
+            path: /mnt/node_path
+```
+
+local persistantvolume: works similar to hostPath, except K8s will always reschedule the same pod to the same node,
+meaning the data will always be persitant (but if the node is unavailable, the pod will be offline)
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-pv
+spec:
+  capacity:
+    storage: 2Gi
+  volumeMode: Filesystem
+  storageClassName: local-storage
+  local:
+    path: /mnt/my-data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - kube1.test.lib.msu.edu
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: local-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: local-storage
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  # -- snip --
+spec:
+  containers:
+  - name: my-app
+    # -- snip --
+    volumeMounts:
+      - name: my-local-storage
+        mountPath: /mnt/storage
+  volumes:
+    - name: my-local-storage
+      persistentVolumeClaim:
+        claimName: local-pcv
+```
+
+ConfigMap (can only be read-only)
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-config-map
+data:
+  files.my-data: |
+    This is my file!
+    Which contains my data!
+```
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  containers:
+    - name: my-container
+      # -- snip --
+      volumeMounts:
+      - name: cm-volume
+        mountPath: /etc/basepath
+  volumes:
+    - name: cm-volume
+      configMap:
+        name: my-config-map
+        items:
+        - key: files.my-data
+          path: my-data.txt
+```
+
+TODO also many other options, such as NFS, but via external providers (mounted similar to local pv)
+
 ## kubeadm Commands
 
 TODO common flags
@@ -799,6 +937,7 @@ TODO
 strategies: recreate, rollingupdate
  - `minReadySeconds`
  - `progressDeadlineSeconds`
+ - `updateStrategy.rollingUpdate.maxUnavailable` define the number of pods wich can upgraded at once
 
 
 ### DaemonSet
