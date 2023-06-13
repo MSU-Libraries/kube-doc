@@ -24,7 +24,7 @@ here for quick reference.
 * **Control plane** - A master node in the cluster. It runs essential cluster services and can receive API calls.
 * **Worker** - An unprivileged node (not a control plane) on which pods can be scheduled to run.
 * **Pod** - One or more containers that are deployed onto a node as a group. Containers in a single pod cannot be split across node and will always be kept together.
-* **Spec** - A definition of an object, usually presented in Yaml format. Often prefixed with the kind of spec (e.g. Deployment Spec).
+* **Manifest** - A definition of an object, usually presented in Yaml format, but can be JSON also.
 * **Namespace** - A scope of where objects (e.g. pods) exists. The default namespace is `default`. Cluster related pods are in the namespace `kube-system`. You can put all the pods for your specific project into a single namespace to keep it separate from other projects in the same cluster. This also allows for you to query info from just a specific namespace rather than the entire cluster.
 * **Context** - A client side set of settings, useful for setting preferences and connection info. In each context you create, you can set things like a different default namespace, a different user to connect as, or a different cluster to use.
 * **Label** - A key/value pair which is associated with an object in Kubernetes. They can be used for convenience, but also as settings or flags which help the cluster manage objects. They can be queried and filtered and are generally used to identify objects in the cluster.
@@ -54,8 +54,8 @@ At its heart, Kubernetes schedules containers to run and keeps them running
 according to a given set of specifications. These containers are run on nodes
 that exist in the Kubernetes cluster, which can be small or quite large.
 
-A typical kubernetes task is to "apply" a specification (or spec). Basically, a
-spec is a Yaml file defining something, like a service. The Yaml specification
+A typical kubernetes task is to "apply" a manifest file. Basically, a
+manifest is a Yaml file defining something, like a service. The Yaml file
 can be applied (telling K8s to "make it happen"), edited in place if it already
 exists (same effect as apply), or deleted ("make it go away").
 
@@ -66,18 +66,18 @@ to be. It is then up to Kubernetes to decide what steps are needed.
 The alternative is to be _imperative_. While Kubernetes supports some imperative
 actions, it is recommended to be declarative whenever possible.
 
-For example, Kubernetes can `apply` on a given specification (declarative). This means
-Kubernetes will work to make that specification happen. If that specification was
+For example, Kubernetes can `apply` on a given manifest (declarative). This means
+Kubernetes will work to make that manifest happen. If that manifest was
 previously made to happen, Kubernetes will verify that is the case. The `apply` succeeds.
 
-However, Kubernetes can also `create` a given specification (imperative). This tells
-Kubernetes to create something defined by the spec. If what is defined in the spec
+However, Kubernetes can also `create` a given manifest (imperative). This tells
+Kubernetes to create something defined by the manifest. If what is defined in the manifest
 already exists, even in only in part, then the `create` will fail. Kubernetes cannot
 create something that already exists.
 
 Another example, once you have containers running, you will likely want to open
 up a port to allow connections into your containers. You could declaratively create
-a service specification file and `apply` it. Or you could imperatively use the
+a service manifest file and `apply` it. Or you could imperatively use the
 `kubectl expose` command to create the service.
 
 ## How Kubernetes Operates
@@ -364,7 +364,7 @@ kubectl get nodes -o json | jq '.items[].spec.taints'
 ```
 
 Will output the taints on your nodes
-```
+```json
 [
   {
     "effect": "NoSchedule",
@@ -584,8 +584,8 @@ being the base on which everything else runs. And on each node runs a CRI
 Also on each node, the _kubelet_ runs. This is not a container or pod, but
 a service running on the host machine. Think of it as the client or agent of
 Kubernetes cluster. It doesn't run the containers; the CRI does that (`containerd`
-in our example case). But it does receive specifications for pods (aka Pod Specs)
-and makes certain they are running as expected.
+in our example case). But it does receive specifications for pods (loaded
+from our manifests) and makes certain they are running as expected.
 
 Then each nodes makes pods depending on its role. Each of these will be within
 the namespace **kube-system**.
@@ -612,6 +612,9 @@ Monitors cluster state versus desired state, making changes when needed
 to move the cluster toward the desired state.
 There should be a _controller_manager_ on every control plane node.
 
+**kube-scheduler**  
+TODO
+
 **etcd**  
 A distributed key-value store used to store Kubernetes objects. Essentially,
 this is the datastore for the cluster.
@@ -627,7 +630,7 @@ name could be reused in an alternate namespace.
 Cluster pods are in the `kube-system` namespace, where the default namespace is
 aptly called `default`.
 
-To create a namespace, first create a namespace spec file. E.g. `~/namespace-best-app.yaml`:
+To create a namespace, first create a namespace manifest file. E.g. `~/namespace-best-app.yaml`:
 ```yaml
 apiVersion: v1
 kind: Namespace
@@ -821,37 +824,37 @@ kubectl get nodes -o json
 kubectl get pods -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.spec.nodeName,HOSTIP:.status.hostIP,PHASE:.status.phase,START_TIME:.metadata.creationTimestamp --sort-by=.metadata.creationTimestamp --no-header
 ```
 
-## Writing Specs
+## Writing Manifests
 
-Objects have _specs_, which define the desired state of that object. It is up to
-the control plane to take actions to ensure the _status_, or current state, is
-changed to match the spec.
+Objects have _manifests_, which define the desired state of that object, also referred to
+as the _specification_, or just _spec_. It is up to the control plane to take actions to
+ensure the _status_, or current state, is changed to match the manifest.
 
-If you know your object kind, you can get all the info about a spec by using
+If you know your object kind, you can get all the info about a manifest by using
 the `kubectl explain` command.
 
-To list spec fields and description about those fields for a Deployment Spec:
+To list manifest fields and description about those fields for a Deployment Spec:
 ```
 kubectl explain deployment
 ```
 
-This only lists the top level fields of a deployment spec. To delve down
+This only lists the top level fields of a deployment manifest. To delve down
 into sub-fields, you can `.` delimit the fields you are interested in.
 ```
 kubectl explain deployment.spec
 kubectl explain deployment.spec.strategy
 ```
 
-To get a full tree of a spec layout in a single output, you can use the `--recurse` flag:
+To get a full tree of a manifest layout in a single output, you can use the `--recurse` flag:
 ```
 kubectl explain service --recursive
 ```
 
-While the underlying API uses JSON, spec files are written in Yaml. As
-Yaml files support multiple Yaml structures per file, you can combine
-objects together when appropriate in a single file.
+While the underlying API uses JSON, manifest files are typically written in Yaml
+(though you could use JSON). As Yaml files support multiple Yaml structures per
+file, you can combine objects together when appropriate in a single file.
 
-An example Yaml config with a Deployment Spec and a Service Spec.
+Here's an example Yaml config with a Deployment and Service manifest.
 The service defined provides web access to the `httpd` containers
 from the deployment.
 ```yaml
@@ -889,9 +892,16 @@ spec:
     targetPort: 80
 ```
 
-Specs can become quite large and complex. While putting multiple objects
-into a single file is possible, keeping spec definitions in separate files
+Manifests can become quite large and complex. While putting multiple objects
+into a single file is possible, keeping manifest definitions in separate files
 can help with keeping a more organized Kubernetes config.
+
+### Create Manifests with Help from kubectl
+
+TODO
+```
+kubectl create deployment my-website --image=nginx -o yaml --dry-run
+```
 
 ## Labels
 
@@ -1020,12 +1030,18 @@ TODO common and useful commands, links to docs
 
 `kubectl exec -i -t my-pod --container main-app -- /bin/bash` # selecting container from multi-container pod
 
-`kubectl patch` to update API objects in place
+`kubectl apply` create/update API; when updating, only need to specify parts changing
 
-`kubectl delete`
+`kubectl create` create API; will fail if already exists
+
+`kubectl replace` completely replace existing object; must provide complete manifest; `--force` flag will have it actually perform a `DELETE` before re-creating object with new manifest
 
 to update fields that cannot be updated, delete and re-create the resource with `replace --force`
 `kubectl replace -f https://k8s.io/examples/application/nginx/nginx-deployment.yaml --force`
+
+`kubectl patch` to update API objects in place
+
+`kubectl delete`
 
 `kubectl scale`
 
@@ -1046,12 +1062,17 @@ kubectl api-resources
 
 Available API versions
 ```
-kubectl api-resources
+kubectl api-versions
 ```
 
 List built-in roles
 ```
 kubectl get clusterroles
+```
+
+Using the `APIGROUP`, you can look up the version from `api-versions` using something like:
+```
+kubectl explain --api-version=apps/v1 deployments
 ```
 
 ### Autocomplete for kubectl
@@ -1077,8 +1098,8 @@ Taints can have three possible effects:
 * `PreferNoSchedule`: Avoid scheduling on this node, but not outright prevent it.
 * `NoExecute`: Not only prevent pods from being scheduled on this node, but evict any already running pods off this node.
 
-The other side of taints are tolerations. Tolerations are defined in the specs and allow that spec
-to tolerate the taint, and thus be scheduled on the tainted node.
+The other side of taints are tolerations. Tolerations are defined in the manifest and allow that
+manifest to tolerate the taint, and thus be scheduled on the tainted node.
 
 One example of this might be to handle hardware differences of nodes. Say one node has powerful GPU installed
 and you prefer to only run GPU heavy pods there. You can set a taint to handle this.
@@ -1133,3 +1154,26 @@ Unlikely that you would want to use the output, but it might help in the process
 
 ### MicroK8s: Easier K8s with Sane Defaults
 TODO
+
+## Docker Swarm Comparisons
+
+If you are coming from Docker Swarm, here is a table of closest equivalent features in Kubernetes.
+
+| Docker Swarm | Kubernetes | Notes |
+| ------------ | ---------- | ----- |
+| Service (non-public) | Deployment + Service | |
+| Service (public) | Deployment + Service + IngressController + Ingress | |
+| Replicated Service | Deployment |  |
+| Global Service | DaemonSet |  |
+| Health Check | Liveness Probe | Also similar to Readiness Probe |
+
+And here is a table if you are looking for a rough equivalent command from `docker` using `kubectl`.
+
+| Docker and Swarm (`docker`) | Kubernetes (`kubectl`) | Notes |
+| ------------ | ---------- | ----- |
+| `stack deploy` | `apply` |  |
+| `exec` | `exec` |  |
+| `logs` | `logs` |  |
+| `service logs <SERVICE>` | `logs deployment/<DEPLOYMENT>` |  |
+| `<TYPE> inspect` | `<TYPE> describe` |  |
+
