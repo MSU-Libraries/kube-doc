@@ -978,13 +978,112 @@ services can only be exposed on a limited port range using this, by default 3000
 
 With `NodePort`, the port on each node is proxied into the service from the node's host IPs.
 
-### Ingress Controller
-TODO
+You *can* change the `NodePort` range to include reserved ports such as 80 and 443, but it is discouraged.
 
-3 official, but many alternatives: https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/
+### LoadBalancer (MetalLB)
+The LoadBalancer object is often implemented differently based on the cloud provider offering
+Kubernetes-as-a-Service (KaaS). When not using KaaS, you could use an external load balancer,
+but there are options (although limited) for a cluster hosted LoadBalancer.
+
+A LoadBalancer is linked directly with a Service; that is, a single Service. To handle more
+complex routing or multiple Services, see Ingress and IngressController.
+
+A popular LoadBalancer for self-managed clusters is [MetalLB](https://metallb.universe.tf/) ([GitHub](https://github.com/metallb/metallb)).
+
+Note: If you are using Docker Swarm on a node, you may run into a port conflict with MetalLB as both make
+use of port 7946.
+
+#### Preparation
+MetalLB requires a couple changes to your `kube-proxy` before proceeding. Both IP Virtual Server (IPVS)
+and change how ARP requests are handled. By default, `kube-proxy` uses IPTables. IPVS is designed to
+for load balancing, whereas IPTables is firewall software.
+
+The `ip_vs` module must be enabled (check via `lsmod`; it's likely already there).
+
+To check if the kube-proxy config needs to be updated, we'll pass it through `kubectl diff`:
+```sh
+kubectl get configmap kube-proxy -n kube-system -o yaml | sed -e "s/strictARP: \w\+/strictARP: true/" | sed -e "s/mode: \"\w*\"/mode: \"ipvs\"/" | kubectl diff -f - -n kube-system
+```
+
+If the diff that a change is needed, update it:
+```sh
+kubectl get configmap kube-proxy -n kube-system -o yaml | sed -e "s/strictARP: \w\+/strictARP: true/" | sed -e "s/mode: \"\w*\"/mode: \"ipvs\"/" | kubectl apply -f - -n kube-system
+```
+
+### Apply Manifest
+Find a stable version of MetalLB to use (don't apply the `master` branch). Note in this example, we are
+using version `v0.13.10`.
+```sh
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.10/config/manifests/metallb-native.yaml
+```
+
+You will see numerous resources created. Once completed, there will be a new namespace `metallb-system` where MetalLB
+exists. Nothing will happen until you start configuring resources with required configurations into the `metallb-system`
+namespace.
+
+### Configuring
+
+There are various way to [configure MetalLB](https://metallb.universe.tf/configuration/). Here we'll do a simple
+layer 2 setup. We'll need an `IPAddressPool` and `L2Advertisement`.
+
+Example configuration manifest:
+```yaml
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: mlb-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 192.168.1.192/27
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: mlb-ad
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - mlb-pool
+```
+
+#### Using
+Once the LoadBalancer is ready, you can connect your Service to it
+by setting `type: LoadBalancer`.
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: my-web
+  type: LoadBalancer
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+```
+
+### Ingress Controller
+An IngressController acts as as sort of reverse proxy to make a Service available external
+to the cluster. It works with Ingress resources to do this.
+
+There are 3 officially supported IngressControllers, among many other alternatives: https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/
+
+We'll use `ingress-nginx` (one of the 3 official IngressControllers) in this example.
+
+```sh
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/baremetal/deploy.yaml
+```
 
 ### Ingress
-TODO
+Ingress resources define routing. These do nothing by themselves, rather, they are read by an IngressController
+in order to manage traffic.
+
 
 ### Job
 TODO
@@ -1038,6 +1137,9 @@ TODO common and useful commands, links to docs
 
 to update fields that cannot be updated, delete and re-create the resource with `replace --force`
 `kubectl replace -f https://k8s.io/examples/application/nginx/nginx-deployment.yaml --force`
+
+TODO see the difference between file and loaded manifest (and display if the change would not be valid)
+`kubectl diff -f manifest.yaml`
 
 `kubectl patch` to update API objects in place
 
