@@ -28,7 +28,7 @@ here for quick reference.
 * **Namespace** - A scope of where objects (e.g. pods) exists. The default namespace is `default`. Cluster related pods are in the namespace `kube-system`. You can put all the pods for your specific project into a single namespace to keep it separate from other projects in the same cluster. This also allows for you to query info from just a specific namespace rather than the entire cluster.
 * **Context** - A client side set of settings, useful for setting preferences and connection info. In each context you create, you can set things like a different default namespace, a different user to connect as, or a different cluster to use.
 * **Label** - A key/value pair which is associated with an object in Kubernetes. They can be used for convenience, but also as settings or flags which help the cluster manage objects. They can be queried and filtered and are generally used to identify objects in the cluster.
-* **Annotation** - A key/value pair for arbitrary data which is _not_ used to identify objects. Annotation cannot be queried or filtered, and are generally used for client libraries or tools.
+* **Annotation** - A key/value pair for arbitrary data which is _not_ used to identify objects. Annotation cannot be queried or filtered, and are generally used for client libraries or tools. These can be some setting than an object requires, or a configuration change that alters how that object operates.
 * **Taint** - A key/value pair setting on a node which prevents pods from starting on that node, or can even evict a pod from the node, depending on the taint value. By default, there is a taint on control planes which prevents pods from running on them.
 * **Toleration** - A definition in a pod that allows the pod to be scheduled on a node with specific taint(s).
 * **Object** - A persistant entity within Kubernetes (e.g. pod, deployments, events, etc.) 
@@ -37,16 +37,17 @@ here for quick reference.
 * **ReplicaSet** - Ensures a certain number of pods are running at once. Generally, it is recommended to use _Deployment_ instead of _ReplicaSets_.
 * **Deployment** - A means of handling _ReplicaSets_ which include the ability to do rolling updates. A deployment is version aware of the pods, and can scale newer pods up to replace older pods.
 * **Service** - Defines a way of exposing an application to the network.
-* **Ingress** - TODO
-* **IngressController** - TODO
+* **LoadBalancer** - Both a way to load balance traffic, but also how you allow external traffic into your cluster.
+* **Ingress** - Definition of routing rules for what services to route traffic to.
+* **IngressController** - The service that reads rules from Ingress resource and routes traffic.
 * **DaemonSet** - Ensures a single pod is running on each node in the cluster.
 * **Probe** - A check as to the status of a pod, used by Kubernetes to determine pod health. There are several types of probes available.
-* **Job** - TODO
-* **CronJob** - TODO
+* **Job** - Run a pod, specifically its command, to successful completion. Can run it a given number of times and in parallel.
+* **CronJob** - Run a pod, specifically its command, on a given schedule.
 * **ConfigMap** - A key and value stored in Kubernetes. Used to store data across the cluster, such as environment variables or config files.
 * **Secret** - A key and value, similar to a ConfigMap, but used for secured data, such as security keys, passwords, or other sensitive data.
-* **Volume** - TODO
-* **StatefulSet** - TODO
+* **Volume** - Provides storage to a pod which may last beyond a container's lifetime. May, or may not, refer to actual persistant storage.
+* **StatefulSet** - Similar to a Deployment, but with additional guarantees about ordering and consistency. Helpful in creating non-stateless services.
 
 ## Basics of Kubernetes
 
@@ -154,7 +155,7 @@ socket in order to do so.
 
 Example `crictl` commands:
 ```sh
-# List pods
+# List pods (specifying containerd as runtime)
 crictl -r unix:///run/containerd/containerd.sock pods
 # Stop a pod
 crictl stopp POD_ID
@@ -237,7 +238,12 @@ Installation can also be done independently. Instructions are available on:
 * https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/
 
 
-### Upgrading
+### Versions and Upgrading
+**BEWARE!** Kubernetes and other associated services which interact with it can be _very_
+sensitive to version changes. Large, breaking changes are frequent when going from one
+version to another. You should always install a specific version of a software rather
+than the `latest`, as an unexpected change will likely break compatability.
+
 Upgrading Kubernetes may require specific upgrade documentation and should only
 be done when following the documentation. To avoid bad things from potentially
 happening, you can mark the packages to not auto-update.
@@ -255,7 +261,7 @@ While designed to support interoperability within one minor version
 (e.g. 1.12 compatible with 1.13), but always read the upgrade notes.
 
 Kubernetes is known for making fairly significant changes in new versions.
-Old features can deprecated and removed and new changes are introduced 
+Old features can deprecated and removed and new changes are introduced
 often. Note the version of Kubernetes this documentation was written for
 (located at the top of this document). If you are working with newer or older
 versions of Kubernetes, your experience will likely not follow this documentation
@@ -591,8 +597,8 @@ Then each nodes makes pods depending on its role. Each of these will be within
 the namespace **kube-system**.
 
 **kube-proxy**  
-The proxy handle network traffic routing for services. To route traffic for
-loadbalancing, it must run on every node.
+The proxy handles internal network traffic routing for services. In order to
+route for all cluster traffic, it must run on every node.
 
 **coredns**  
 Internal DNS service to provide name resolution and service discovery within
@@ -613,7 +619,8 @@ to move the cluster toward the desired state.
 There should be a _controller_manager_ on every control plane node.
 
 **kube-scheduler**  
-TODO
+Determines where pods should run, according to available resources and contraints.
+There should be a _controller_manager_ on every control plane node.
 
 **etcd**  
 A distributed key-value store used to store Kubernetes objects. Essentially,
@@ -667,9 +674,13 @@ kubectl get namespaces
 
 ## Volumes
 
-emptyDir: creates an empty dir when first pod is deployed, and persists on node so
-long as the pod exists, even through crashes, until that pod is restarted or removed
-from the node.
+Volumes provide storage beyond the operation of a pod.
+
+### Type: emptyDir
+Creates an empty directory when first pod is deployed, which persists on the node where
+is was created so long as the pod exists. Note, even if the pod crashes, the volume
+will persist. The volume is removed if that that pod is intensionally restarted or the pod
+is removed from the node.
 ```yaml
 apiVersion: v1
 kind: Pod
@@ -687,7 +698,10 @@ spec:
       sizeLimit: 512Mi
 ```
 
-host mount: can be dangerous on multi-node k8s as no guarantee pod will always be on this node
+#### Type: hostPath
+Mount storage from the host node at from the given path.
+Can be dangerous on multi-node cluster as there is no guarantee the pod will always be
+on the same node.
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -710,8 +724,10 @@ spec:
             path: /mnt/node_path
 ```
 
-local persistantvolume: works similar to hostPath, except K8s will always reschedule the same pod to the same node,
-meaning the data will always be persitant (but if the node is unavailable, the pod will be offline)
+#### Type: Local PersistantVolume
+Works similar to `hostPath` volumes, except Kubernetes will always reschedule the same pod
+onto the same node. This means the data will always be persitant to that pid. Of course when the
+node is unavailable, the pod will be offline.
 ```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -769,7 +785,8 @@ spec:
         claimName: local-pcv
 ```
 
-ConfigMap (can only be read-only)
+#### Type: ConfigMap
+TODO ConfigMap (can only be read-only)
 ```yaml
 apiVersion: v1
 kind: ConfigMap
@@ -801,7 +818,9 @@ spec:
           path: my-data.txt
 ```
 
-TODO also many other options, such as NFS, but via external providers (mounted similar to local pv)
+#### Other options
+TODO longhorn: block storage hosted in cluster with replicas across nodes
+TODO also many other options, such as external NFS, but via external providers (mounted similar to local pv)
 
 ## kubeadm Commands
 
@@ -896,11 +915,23 @@ Manifests can become quite large and complex. While putting multiple objects
 into a single file is possible, keeping manifest definitions in separate files
 can help with keeping a more organized Kubernetes config.
 
-### Create Manifests with Help from kubectl
+### Ad Hoc Objects
 
-TODO
+Objects can also be created from the command line with commands such
+as `kubectl create` and `kubectl expose` (for Services). Rather than creating a
+manifest, you pass configurations as flags.
+
+Unless you are testing something small or experimenting, creaing a manifest file
+then applying it is the better way to create and manage objects. (Also, keep your manifest
+file in version control and within a CI process while you're at it!)
+
+### Create Boilerplate Manifests Quickly
+
+That said, using commands like `kubectl create` can be very handy for populating
+a new manifest. By outputing the manifest with flags `-o yaml` and passing
+`--dry-run`, you can quickly boilerplace a full manifest in seconds.
 ```
-kubectl create deployment my-website --image=nginx -o yaml --dry-run
+kubectl create deployment my-website --image=nginx -o yaml --dry-run > my-new-manifest.yaml
 ```
 
 ## Labels
@@ -974,24 +1005,30 @@ A service provides a way to export a port, either internally or externally. By d
 the `type` is `ClusterIP`, which makes the port available to an IP only within the cluster.
 
 You can make a service available on a host using the `type` of `NodePort`. However,
-services can only be exposed on a limited port range using this, by default 30000-32767. 
+services can only be exposed on a limited port range using this, by default 30000-32767.
 
 With `NodePort`, the port on each node is proxied into the service from the node's host IPs.
 
 You *can* change the `NodePort` range to include reserved ports such as 80 and 443, but it is discouraged.
 
-### LoadBalancer (MetalLB)
+### LoadBalancer
+To permit traffic into your cluster from the outside on ports other than `NodePort`, you can
+use a LoadBalancer. Kubernetes does not include any LoadBalancer implementations, rather,
+these are often provided by the cloud service Kubernetes is running on.
+
 The LoadBalancer object is often implemented differently based on the cloud provider offering
 Kubernetes-as-a-Service (KaaS). When not using KaaS, you could use an external load balancer,
 but there are options (although limited) for a cluster hosted LoadBalancer.
 
-A LoadBalancer is linked directly with a Service; that is, a single Service. To handle more
-complex routing or multiple Services, see Ingress and IngressController.
+A LoadBalancer can be linked directly with a Service; that is, a single Service. Also, a LoadBalancer
+does not do routing (at least from a Kubernetes perspective, KaaS providers might offer something).
+To handle more complex routing or multiple Services, see Ingress and IngressController.
 
-A popular LoadBalancer for self-managed clusters is [MetalLB](https://metallb.universe.tf/) ([GitHub](https://github.com/metallb/metallb)).
+A popular LoadBalancer for self-managed clusters is **[MetalLB](https://metallb.universe.tf/)**
+([GitHub](https://github.com/metallb/metallb)).
 
-Note: If you are using Docker Swarm on a node, you may run into a port conflict with MetalLB as both make
-use of port 7946.
+Note: If you are using Docker Swarm on a node, you may run into a port conflict with MetalLB as
+both make use of port 7946.
 
 #### Preparation
 MetalLB requires a couple changes to your `kube-proxy` before proceeding. Both IP Virtual Server (IPVS)
@@ -1000,17 +1037,25 @@ for load balancing, whereas IPTables is firewall software.
 
 The `ip_vs` module must be enabled (check via `lsmod`; it's likely already there).
 
-To check if the kube-proxy config needs to be updated, we'll pass it through `kubectl diff`:
+To check if the kube-proxy config needs to be updated, setting `strictARP: true` and `mode: "ipvs"`.
+
+We'll pass it through `kubectl diff` to preview the change:
 ```sh
-kubectl get configmap kube-proxy -n kube-system -o yaml | sed -e "s/strictARP: \w\+/strictARP: true/" | sed -e "s/mode: \"\w*\"/mode: \"ipvs\"/" | kubectl diff -f - -n kube-system
+kubectl get configmap kube-proxy -n kube-system -o yaml | \
+    sed -e "s/strictARP: \w\+/strictARP: true/" | \
+    sed -e "s/mode: \"\w*\"/mode: \"ipvs\"/" | \
+    kubectl diff -f - -n kube-system
 ```
 
 If the diff that a change is needed, update it:
 ```sh
-kubectl get configmap kube-proxy -n kube-system -o yaml | sed -e "s/strictARP: \w\+/strictARP: true/" | sed -e "s/mode: \"\w*\"/mode: \"ipvs\"/" | kubectl apply -f - -n kube-system
+kubectl get configmap kube-proxy -n kube-system -o yaml | \
+    sed -e "s/strictARP: \w\+/strictARP: true/" | \
+    sed -e "s/mode: \"\w*\"/mode: \"ipvs\"/" | \
+    kubectl apply -f - -n kube-system
 ```
 
-### Apply Manifest
+#### Apply Manifest
 Find a stable version of MetalLB to use (don't apply the `master` branch). Note in this example, we are
 using version `v0.13.10`.
 ```sh
@@ -1021,10 +1066,11 @@ You will see numerous resources created. Once completed, there will be a new nam
 exists. Nothing will happen until you start configuring resources with required configurations into the `metallb-system`
 namespace.
 
-### Configuring
+#### Configuring
 
 There are various way to [configure MetalLB](https://metallb.universe.tf/configuration/). Here we'll do a simple
-layer 2 setup. We'll need an `IPAddressPool` and `L2Advertisement`.
+layer 2 setup. We'll need an `IPAddressPool` and `L2Advertisement`. Note the IP address you specify must be a public
+IP address which the LoadBalancer will assign to itself.
 
 Example configuration manifest:
 ```yaml
@@ -1036,7 +1082,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 192.168.1.192/27
+  - 35.8.223.121/32
 ---
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
@@ -1068,7 +1114,14 @@ spec:
       targetPort: 80
 ```
 
-### Ingress Controller
+For each Service you assign to the LoadBalancer, you will need to ensure there is also an IP address available.
+So if you have three Services, the LoadBalancer will need at least three IPs set under `addresses:`.
+
+MetalLB does support a way of sharing IPs. It also supports assigning specific IPs to specfic Services, however
+IP assignment is currently reliant upon a Kubernetes feature that is deprecated and will be removed in
+future releases.
+
+### Ingress Controller as DaemonSet and HostPort
 An IngressController acts as as sort of reverse proxy to make a Service available external
 to the cluster. It works with Ingress resources to do this.
 
@@ -1080,10 +1133,64 @@ We'll use `ingress-nginx` (one of the 3 official IngressControllers) in this exa
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/baremetal/deploy.yaml
 ```
 
+By default, the IngressCluster still only makes use of NodePort. To allow external traffic, we then need to modify it's manifest.
+
+#### Bind to Host Nodes
+
+The first option to allow external traffic is to change settings on the `ingress-nginx-controller` to bind
+to the host nodes directly and run as a DaemonSet, meaning each node will have one controller. If you have
+the DaemonSet's port bind to the host port rather than a cluster port, the ingress controller will be  able
+to listed to the publicly accessible ports (80,443) and then route that traffic appropriately.
+
+Open the `ingress-nginx` manifest Yaml file and find the Service with `name: ingress-nginx-controller`.
+
+TODO ensure DaemonSet
+TODO hostNetwork: true
+TODO hostPort:
+
+### Ingress Controller with LoadBalancer
+
+Alternatively, assuming you've setup a LoadBalancer to already receive external traffic, we can modify
+the `ingress-nginx-controller` service to make use of the LoadBalancer.
+
+We must set `type: "LoadBalancer"`, and then can optionally also set `externalTrafficPolicy: "Local"`.
+This second setting will prevent Kubernetes from re-routing the external traffic away from the node
+the LoadBalancer decided to route to.
+
+```sh
+kubectl get service/ingress-nginx-controller -n ingress-nginx -o yaml | \
+    sed -e "s/mode: \"\w\+\"/mode: \"LoadBalancer\"/" | \
+    kubectl apply -f - -n ingress-nginx
+```
+
 ### Ingress
 Ingress resources define routing. These do nothing by themselves, rather, they are read by an IngressController
 in order to manage traffic.
 
+An Ingress provides rules to accessing a service via the IngressController.
+```yaml
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: my-web-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  # No need to specify ingressClassName if we setup one as the default
+  ingressClassName: nginx
+  rules:
+  - host: "kube.test.lib.msu.edu"
+    http:
+      paths:
+      - pathType: Prefix
+        path: "/my-web"
+        backend:
+          service:
+            name: my-web-service
+            port:
+              number: 80
+```
 
 ### Job
 TODO
@@ -1107,6 +1214,82 @@ TODO
 
 ### Readiness Probe
 TODO
+
+### Metrics
+Kubernetes makes use of a metrics server, deployed within the `kube-system` namespace to monitor
+resource usage. This is not setup by default and is a requirement for use of
+the `kube top` command, having resource limits, and use of theautoscaling feature.
+
+By default, the metrics server requires the Kubelet certificates be signed. See
+[Kubernetes TLS Certificate](https://kubernetes.io/docs/tasks/tls/managing-tls-in-a-cluster/)
+documentation for more details on setting this up.
+
+Alternatively, you may add the `--kubelet-insecure-tls` flag in the `metrics-server` `spec.containers.args`,
+availble at https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+(link is to `latest`; beware version compatability). There is also a configuration for High availability, see
+the [official repository](https://github.com/kubernetes-sigs/metrics-server) for details.
+
+Example commands:
+```sh
+# Get resource usage per node
+kubectl top nodes
+
+# Get resource usage for pods
+kubectl top pods -A
+```
+
+### Resource Requests and Limits
+TODO
+requests: resources needed to run
+limits: max resources allowed while running
+
+### Taints and Tolerations
+
+Taints flag a node such that it restricts scheduling of pods onto that node.
+We first saw this with our control plane node, which by default didn't allow
+pods to be scheduled there. Crucial `kube-system` pods are exempted from taints.
+
+Taints can have three possible effects:
+
+* `NoSchedule`: Prevent the node from scheduling new pods.
+* `PreferNoSchedule`: Avoid scheduling on this node, but not outright prevent it.
+* `NoExecute`: Not only prevent pods from being scheduled on this node, but evict any already running pods off this node.
+
+The other side of taints are tolerations. Tolerations are defined in the manifest and allow that
+manifest to tolerate the taint, and thus be scheduled on the tainted node.
+
+One example of this might be to handle hardware differences of nodes. Say one node has powerful GPU installed
+and you prefer to only run GPU heavy pods there. You can set a taint to handle this.
+
+```
+kubectl taint nodes my-gpu-node1 gpu=available:NoSchedule
+```
+
+This taint will prevent pods from being scheduled on `my-gpu-node1`. Then in our deployment
+we could add a toleration for our GPU using app.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # -- snip --
+spec:
+  # -- snip --
+  template:
+    metadata:
+      # -- snip --
+    spec:
+      containers:
+      - name: gpu-runner
+        image: gpu-processor
+      tolerations:
+      - key: gpu
+        operator: Equal
+        value: available
+        effect: NoSchedule
+```
+
+This deployment would now be schedulable onto our tainted node without issue.
 
 ## kubectl Commands
 
@@ -1188,74 +1371,22 @@ source <(kubectl completion bash)
 echo "source <(kubectl completion bash)" > /etc/bash_completion.d/kubectl
 ```
 
-### Taints and Tolerations
-
-Taints flag a node such that it restricts scheduling of pods onto that node.
-We first saw this with our control plane node, which by default didn't allow
-pods to be scheduled there. Crucial `kube-system` pods are exempted from taints.
-
-Taints can have three possible effects:
-
-* `NoSchedule`: Prevent the node from scheduling new pods.
-* `PreferNoSchedule`: Avoid scheduling on this node, but not outright prevent it.
-* `NoExecute`: Not only prevent pods from being scheduled on this node, but evict any already running pods off this node.
-
-The other side of taints are tolerations. Tolerations are defined in the manifest and allow that
-manifest to tolerate the taint, and thus be scheduled on the tainted node.
-
-One example of this might be to handle hardware differences of nodes. Say one node has powerful GPU installed
-and you prefer to only run GPU heavy pods there. You can set a taint to handle this.
-
-```
-kubectl taint nodes my-gpu-node1 gpu=available:NoSchedule
-```
-
-This taint will prevent pods from being scheduled on `my-gpu-node1`. Then in our deployment
-we could add a toleration for our GPU using app.
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  # -- snip --
-spec:
-  # -- snip --
-  template:
-    metadata:
-      # -- snip --
-    spec:
-      containers:
-      - name: gpu-runner
-        image: gpu-processor
-      tolerations:
-      - key: gpu
-        operator: Equal
-        value: available
-        effect: NoSchedule
-```
-
-This deployment would now be schedulable onto our tainted node without issue.
-
-### Resource Requests and Limits
-TODO
-requests: resources needed to run
-limits: max resources allowed while running
-
-### Metrics
-TODO
-kubectl top nodes
-kubectl top pods -A
-Single CP: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-HA Cluster: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/high-availability.yaml
-
-### From Compose to K8s using Kompose
+### From Docker Compose to K8s using Kompose
 
 A tool to try to convert docker-compose files to Kubernetes configs: https://kompose.io/
 
 Unlikely that you would want to use the output, but it might help in the process.
 
-### MicroK8s: Easier K8s with Sane Defaults
-TODO
+### Other Implementations
+As Kubernetes is just a set of APIs, you don't technically need `kubeadm` or `kubectl`. You could
+just make API calls, or even make your own alternate commands, or recreate the official tools
+in your own way. And people have done just that. Here are a few.
+
+* Minikube: Mainly used for learning Kubernetes. Not for production. Many tutorials use this, but it can cause confusion later on as some practices learned in Minikube does not transfer to real Kubernetes.
+* KinD: Kubernetes in Docker. Run a Kubernetes cluster in Docker. Not for production.
+* MicroK8s: Easier Kubernetes with Sane Defaults.
+* K3s: A "Lightweight" Kubernetes, using less memory and having smaller binaries.
+
 
 ## Docker Swarm Comparisons
 
@@ -1264,7 +1395,8 @@ If you are coming from Docker Swarm, here is a table of closest equivalent featu
 | Docker Swarm | Kubernetes | Notes |
 | ------------ | ---------- | ----- |
 | Service (non-public) | Deployment + Service | |
-| Service (public) | Deployment + Service + IngressController + Ingress | |
+| Service (public) | DaemonSet + Service + IngressController + Ingress | |
+| Service (public) | LoadBalancer + Deployment + Service + IngressController + Ingress | Not quite 1-to-1 conversion, but a better configuration. |
 | Replicated Service | Deployment |  |
 | Global Service | DaemonSet |  |
 | Health Check | Liveness Probe | Also similar to Readiness Probe |
