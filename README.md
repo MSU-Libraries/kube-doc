@@ -1,8 +1,19 @@
 # Kubernetes Documentation
 
+It is assumed the reader has an understanding and familiarity with containerization.  
+
 _Written for Kubernetes v1.27_
 
-Assumed understanding and familiarity with containerization.
+*Forewarning when learning Kubernetes:* Kubernetes changes often. If you are using a
+different version of Kubernetes, this documentation _may not apply to you_. Likewise,
+when searching for answers online, _many_ tutorials, guides, and answers will be
+*wrong*, as they were written for older versions.
+
+There are also a multitude of
+Kubernetes novices creating simple guides about Kubernetes which are lacking in
+context and understanding of the material. For the most part, assume all tutorials
+are made by someone who copy-pasted various code snippets on the internet until
+something appeared to work. _Be suspect of any answers you find._
 
 [[_TOC_]]
 
@@ -23,11 +34,13 @@ here for quick reference.
 * **Node** - a machine in the Kubernetes cluster.
 * **Control plane** - A master node in the cluster. It runs essential cluster services and can receive API calls.
 * **Worker** - An unprivileged node (not a control plane) on which pods can be scheduled to run.
+* **Object** - Something that the Kubernetes cluster is managing (e.g. Pod, Deployment, etc).
 * **Pod** - One or more containers that are deployed onto a node as a group. Containers in a single pod cannot be split across node and will always be kept together.
 * **Manifest** - A definition of an object, usually presented in Yaml format, but can be JSON also.
-* **Namespace** - A scope of where objects (e.g. pods) exists. The default namespace is `default`. Cluster related pods are in the namespace `kube-system`. You can put all the pods for your specific project into a single namespace to keep it separate from other projects in the same cluster. This also allows for you to query info from just a specific namespace rather than the entire cluster.
+* **Namespace** - A scope of where objects (such as Pods) exists. The default namespace is `default`. Cluster related pods are in the namespace `kube-system`. You can put all the pods for your specific project into a single namespace to keep it separate from other projects in the same cluster. This also allows for you to query info from just a specific namespace rather than the entire cluster.
 * **Context** - A client side set of settings, useful for setting preferences and connection info. In each context you create, you can set things like a different default namespace, a different user to connect as, or a different cluster to use.
 * **Label** - A key/value pair which is associated with an object in Kubernetes. They can be used for convenience, but also as settings or flags which help the cluster manage objects. They can be queried and filtered and are generally used to identify objects in the cluster.
+* **Selector** - A query for objects using label keys/values. 
 * **Annotation** - A key/value pair for arbitrary data which is _not_ used to identify objects. Annotation cannot be queried or filtered, and are generally used for client libraries or tools. These can be some setting than an object requires, or a configuration change that alters how that object operates.
 * **Taint** - A key/value pair setting on a node which prevents pods from starting on that node, or can even evict a pod from the node, depending on the taint value. By default, there is a taint on control planes which prevents pods from running on them.
 * **Toleration** - A definition in a pod that allows the pod to be scheduled on a node with specific taint(s).
@@ -60,6 +73,24 @@ manifest is a Yaml file defining something, like a service. The Yaml file
 can be applied (telling K8s to "make it happen"), edited in place if it already
 exists (same effect as apply), or deleted ("make it go away").
 
+A simple example manifest file (details of manifests will be covered later).
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-web-pod
+  labels:
+    app: my-web
+spec:
+  containers:
+  - name: my-nginx
+    image: nginx
+    ports:
+    - containerPort: 80
+      protocol: TCP
+```
+
 Kubernetes typically operates in a _declarative_ manner. Rather than specify
 the steps needed to get to an end state, you declare what you want the end state
 to be. It is then up to Kubernetes to decide what steps are needed.
@@ -79,7 +110,7 @@ create something that already exists.
 Another example, once you have containers running, you will likely want to open
 up a port to allow connections into your containers. You could declaratively create
 a service manifest file and `apply` it. Or you could imperatively use the
-`kubectl expose` command to create the service.
+`expose` command to create the service.
 
 ## How Kubernetes Operates
 
@@ -96,7 +127,7 @@ to manage your cluster and the contents within it. However, within this guide, w
 be using these official tools/services:
 
 * `kubeadm`: To provision and build your cluster.
-* `kubectl`: To issue commands to your cluster.
+* `kubectl`: To issue commands regarding what is in your cluster.
 * `kubelet`: The component on each cluster node which manages that specific node.
 
 When creating objects in Kubernetes, they are often represented by a subdomain
@@ -361,7 +392,7 @@ kubectl get nodes
 ```
 
 By default, control plane nodes will not schedule pods. Control
-planes come with a taint (more on taints later) which prevents
+planes come with a [taint](#taints-and-tolerations) which prevents
 scheduling of pods to run.
 
 Running this:
@@ -369,7 +400,7 @@ Running this:
 kubectl get nodes -o json | jq '.items[].spec.taints'
 ```
 
-Will output the taints on your nodes
+Will output the taints on your nodes.
 ```json
 [
   {
@@ -629,7 +660,7 @@ There should be an _etcd_ on every control plane node. However, you can also
 setup Kubernetes to use an external _etcd_ store as well, which is not covered
 by this documentation.
 
-### Namespaces
+## Namespaces
 
 Namespace provide a place where names of objects must be unique. However, any given
 name could be reused in an alternate namespace.
@@ -639,12 +670,11 @@ aptly called `default`.
 
 To create a namespace, first create a namespace manifest file. E.g. `~/namespace-best-app.yaml`:
 ```yaml
+---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: best-app
-  labels:
-    name: best-app
 ```
 
 Use `kubectl` to make the namespace:
@@ -653,7 +683,7 @@ kubectl apply -f ~/namespace-best-app.yaml
 ```
 
 When specifying a `kubectl` command, you can use the `-n` flag to specify the namespace to use:
-```
+```sh
 # Get pods from 'default' namespace
 kubectl get pods
 
@@ -662,15 +692,158 @@ kubectl -n best-app get pods
 ```
 
 To not filter or limit by namespace, you can use the `--all-namespace` or `-A` flag:
-```
+```sh
 # Get all pods across all namespaces
 kubectl get pods -A
 ```
 
 To see all current namespaces:
-```
+```sh
 kubectl get namespaces
 ```
+
+## Using kubectl
+The main command for interacting with your running cluster is `kubectl`. As you will be
+using this command so often, you will be greatly helped by [setting up Bash autocompletion](#autocomplete-for-kubectl)
+as soon as possible.
+
+We'll cover many `kubectl` commands in this document, but one of the most used is `kubectl get` which is used
+to query data, settings, and more from the cluster.
+
+By default, `kubectl get` outputs a table-like output, typically with limited set of columns. 
+```sh
+$ kubectl get pods
+NAME            READY   STATUS    RESTARTS   AGE
+my-double-web   2/2     Running   0          27h
+my-single-web   1/1     Running   0          27h
+```
+
+In querying objects, you will need to specify what to query. While you could query for `all`, that can be
+quite broad once you have many objects.
+
+Typically you will query with the _kind_ and _name_ of the object. Kubernetes supports multiple ways of formatting
+this information, including `/` delimited or just using a space. There are also
+[abbreviations](#resource-abbreviations) available.
+
+Some examples commands querying for a Pod:
+```sh
+kubectl get pods/my-single-web
+kubectl get pods my-single-web
+kubectl get pod my-single-web   # singular form is supported
+kubectl get po my-single-web    # po is the supported abbreviation for pods
+```
+
+You can modify this output several ways.
+
+* `-o wide` Show additional columns of data in the table format.
+* `--no-headers` Hide the header row when outputing in a table format.
+* `--show-labels` Add a column when outputing in a table format to dispay labels for the objects.
+* `--sort-by` Sort table data by specified data.
+* `-w` Monitor for changes and update output when something changes (similar to Unix `watch` command)
+* `-o yaml` Show _all_ data in a full dump in Yaml format.
+* `-o json` Show _all_ data in a full dump in JSON format.
+* `-o custom-columns` Create a customized table format output.
+
+When using `-o custom-columns`, the format is a comma delimited list where each column is `COLUMN_NAME:data_query`, where the data_query is a JSONPath query.
+```sh
+kubectl get pods -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.spec.nodeName,HOSTIP:.status.hostIP,PHASE:.status.phase,START_TIME:.metadata.creationTimestamp
+```
+
+When using `--sort-by `, pass a JSONPath query.
+```sh
+kubectl get pods -sort-by=.status.startTime
+
+You can also perform some filtering on output by use of the `--field-selector` flag. 
+```sh
+kubectl get pods --field-selector status.phase=Running
+```
+
+This is less helpful than it would sound, as there is no documentation as to what fields are available
+and no command to be able to query them from Kubernetes itself. You can find examples which mentions some
+fields, but those examples are mostly worthless copy-pasta and don't mention how to find the fields.
+
+To actually find fields available, you currently have to delve into the source code (regards to one
+individual who has [done just that](https://hoelz.ro/blog/which-fields-can-you-use-with-kubernetes-field-selectors)).
+
+## Labels and Selectors
+
+Labels are used extensively throughout Kubernetes. Labels are key-value pairs which you can assign
+to objects. You'll also see Kubernetes itself applying labels in some circumstances. Labels are
+useful for categorizing objects and can be queried against to find specific objects that match
+certain labels.
+
+Lets look at our namespace example from before, only we'll add some labels. Labels are placed
+into the `metadata:` section of manifests.
+```yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: best-app
+  labels:
+    app: best
+    group: public-apps
+```
+
+Here we've added two labels. The key and values are defined by us and could have been anything.
+
+To see all labels in `kubectl get` output, use the `--show-labels` flag.
+```sh
+kubectl get namespaces --show-labels
+```
+
+To see a specific label (or labels), pass in the `-L` flag with the label key.
+```sh
+kubectl get pods -L app -L group
+```
+
+Kubernetes also support querying against labels. This is known as a **selector**. You will often
+see `selector:` fields in manifests to filter which objects the manifest is referencing.
+
+To use a selector with `kubectl get`, use the `-l` flag.
+```sh
+# Exact matching, multiple matches
+kubectl get namespaces -l app=best-app,group=public-apps
+
+# Negative match
+kubectl get namespaces -l group!=public-apps
+
+# Label key is set
+kubectl get namespaces -l group
+
+# Label key is not set
+kubectl get namespaces -l !group
+
+# Key value is one of value list
+kubectl get namespaces -l 'group in (backend-apps,public-apps)'
+
+# Key value is not one of value list
+kubectl get namespaces -l 'group notin (backend-apps,utility-apps)'
+```
+
+Best practice is to use manifests to set/update labels, but the `kubectl label`
+command can be use to make ad hoc label changes. Be forewarned, if you are trying
+to change a label that was set in the object manifest, Kubernetes will just change it back
+to match the manifest the instant it changes.
+```sh
+# Find the pods with label app=my-app and then set lable tier=second
+kubectl label pods -l app=my-app tier=second
+```
+
+To remove a label manually, set the pass the key followed by a `-`.
+```sh
+kubectl label pods -l app=my-app tier-
+```
+
+it's not just you who uses labels, kubernetes uses labels/selectors internally to manage things
+
+While not a requirement, Kubernetes does have a set of
+[recommended labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
+for common use. These include frequent needs to describe the application and it's purpose, such as:
+
+* `app.kubernetes.io/name`
+* `app.kubernetes.io/version`
+* `app.kubernetes.io/part-of`
 
 ## Volumes
 
@@ -822,27 +995,6 @@ spec:
 TODO longhorn: block storage hosted in cluster with replicas across nodes
 TODO also many other options, such as external NFS, but via external providers (mounted similar to local pv)
 
-## kubeadm Commands
-
-TODO common flags
- * --help
- * -n NAMESPACE
- * -o wide (more columns for `kubectl get`)
- * -o json (display json response; useful for passing into jq)
- * -o yaml
- * --show-labels (show labels for `get pods`)
-
-TODO filtering
-`kubectl get pods --field-selector spec.nodeName=node1`
-
-TODO common and useful commands, links to docs
-
-TODO customizing output
-```
-kubectl get nodes -o json
-kubectl get pods -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.spec.nodeName,HOSTIP:.status.hostIP,PHASE:.status.phase,START_TIME:.metadata.creationTimestamp --sort-by=.metadata.creationTimestamp --no-header
-```
-
 ## Writing Manifests
 
 Objects have _manifests_, which define the desired state of that object, also referred to
@@ -934,38 +1086,6 @@ a new manifest. By outputing the manifest with flags `-o yaml` and passing
 kubectl create deployment my-website --image=nginx -o yaml --dry-run > my-new-manifest.yaml
 ```
 
-## Labels
-
-TODO
-
-get specific label values
-```
-kubectl get pods -Lapp -Ltier -Lrole
-```
-
-filter by label values (i.e. selector)
-```
-kubectl get pods -lapp=guestbook,role=slave
-# supports k=v,k!=v,k in (v1,v2), key notin (v1,v2)
-           key, (meaning key is set)
-           !key (meaning key is not set)
-```
-
-update labels (filter by app, update tier)
-```
-kubectl label pods -l app=nginx tier=fe
-```
-
-it's not just you who uses labels, kubernetes uses labels/selectors internally to manage things
-
-While not a requirement, Kubernetes does have a set of
-[recommended labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
-for common use. These include frequent needs to describe the application and it's purpose, such as:
-
-* `app.kubernetes.io/name`
-* `app.kubernetes.io/version`
-* `app.kubernetes.io/part-of`
-
 ## Objects and Manifests
 While there are quite a different kinds of Kubernetes objects, here are some key ones you
 may want to use.
@@ -998,7 +1118,20 @@ The definition of the resource. To see specifics about the definition, use `kube
 
 ### Pod
 A Pod is the smallest deployable container object. It defines what container(s) exists in the Pod
-and any attributes about each container.
+and any attributes about each container. _Note: many values in running pod container cannot be updated._
+The Pod has to be replaced in order for these changes to take effect.
+
+_Common fields for Pod spec definitions:_
+
+* `containers.name:` The name of the container within the pod.
+* `containers.image:` The registry (optional) and image to use for this container.
+* `ports:` Definitions of ports on the container. Used by Services.
+* `env:` Define environment variables to be set in the container.
+* `envFrom:` Define environment variables to be loaded from ConfigMaps or Secrets.
+* `command:` Set the entrypoint for the container (note, this value is passed as a list).
+* `args:` The command and arguments for the container.
+
+For full listing of fields, see `kubectl explain pod.spec`.
 
 Example single container Pod:
 ```yaml
@@ -1011,12 +1144,14 @@ metadata:
     app: my-web
 spec:
   containers:
-    - image: nginx
-      name: web
-      ports:
-        - containerPort: 80
-          protocol: TCP
-          #name: http
+  - image: nginx
+    name: web
+    env:
+    - name: MY_VAR
+      value: "123"
+    ports:
+    - containerPort: 80
+      protocol: TCP
 ```
 
 ### ReplicaSet
@@ -1058,10 +1193,24 @@ spec:
 ```
 
 ### Deployment
+A deployment is was of managing updates to ReplicaSets. It can handle making
+rollouts (deployment of changes) for the Pods in the ReplicaSet. Note that
+_you do not define a ReplicaSet for a Deployment_; the Deployment is an object
+that contains a ReplicaSet automatically.
+
+If you recall, many things defined within a running Pod cannot be updated. For
+example, values in `env:` will not be updated in a Pod. However, Deployments
+will detect a change and begin a rollout of the new changes. Tracking
+rollouts can be done via `kubectl rollout`.
+
+* `kubectl rollout status deployment my-deployment` The current status a rollout for the given deployment.
+* `kubectl rollout pause deployment my-deployment` Pause a rollout for the given deployment.
+* `kubectl rollout resume deployment my-deployment` Resume a rollout for the given deployment.
+* `kubectl rollout history deployment my-deployment` See a history of rollouts for the given deployment.
+* `kubectl rollout undo deployment my-deployment` Rollback the given deployment to the previous revision.
+* `kubectl rollout undo deployment my-deployment --to-revision 3` Rollback the given deployment to the specified revision.
+
 TODO
-
-`kubectl rollout` # status, pause, resume, history, undo
-
 strategies: recreate, rollingupdate
  - `minReadySeconds`
  - `progressDeadlineSeconds`
@@ -1390,7 +1539,8 @@ One example of this might be to handle hardware differences of nodes. Or certain
 to be scheduled on specific nodes. Say one node has powerful GPU installed
 and you prefer to only run GPU heavy pods there. You can set a taint to handle this.
 
-```
+```sh
+#                   NodeName     Key=Value:Effect
 kubectl taint nodes my-gpu-node1 gpu=available:NoSchedule
 ```
 
@@ -1419,6 +1569,20 @@ spec:
 ```
 
 This deployment would now be schedulable onto our tainted node without issue.
+
+To query for Taints using `jq`:
+```sh
+kubectl get nodes -o json | jq '.items[].spec.taints'
+```
+
+To remove Taints, pass the taint key followed by a `-` character.
+```sh
+# Remove a taint from all nodes
+kubectl taint nodes --all gpu-
+
+# Remove a taint from specific node
+kubectl taint nodes my-gpu-node1 gpu-
+```
 
 ## Pod Deployment Spread
 If you have 3 nodes and want to deploy a set of 2 replica pods, you would likely not want
@@ -1458,7 +1622,7 @@ spec:
         image: nginx
 ```
 
-## kubectl Commands
+## kubectl Commands Reference
 
 TODO common and useful commands, links to docs
 
@@ -1505,21 +1669,79 @@ TODO
 
 ## Kustomize: Templating for Kubernetes
 
-TODO
+The Kustomize tool allows for creating manifest templates. Previously, this was a standalone tool,
+but has since been integrated into Kubernetes natively via `kubectl kustomize`.
+
+Kustomize allows you to create a `kustomization.yaml` to list all your resources and apply it in
+one go via `kubeadm apply -k <dir_containing_kuztomization_yaml>` (note the `-k` flag instead of
+the typical `-f`).
+
+The `kustomization.yaml` file could be something like (where the other yaml files are in the same directory):
+```yaml
+resources:
+- configmap.yaml
+- deployment.yaml
+- service.yaml
+```
+
+You can then create patches that apply to certain environments (e.g. `dev`, `stage`, `prod`).
+Say the above file was a template of shared manifests located in a `myproject/base/`.
+
+You could create another `kustomize.yaml` file in `myproject/dev/` which includes the `base` resources
+and then builds upon them, adding resources, applying label, and patching the base manifests.
+```yaml
+namePrefix: dev-
+resources:
+- ../base
+- mailcatcher.yaml
+commonLabels:
+  appEnv: dev
+patchesStrategicMerge:
+- set_replicas_to_1.yaml
+```
+
+Where set `set_replicas_to_1.yml` is a partial manfiest, such as:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-web
+spec:
+  replicas: 1
+```
 
 ## Other Helpful Tips
 
-### List All the Things
+### Resource Abbreviations
+You may have noticed that when referencing resources, both plural singular are allowed.
+Additionally, many resource kinds have abbreviations you can use, also known as short names.
+For example, these three commands are equivalent:
+```
+kubectl get services -A
+kubectl get service -A
+kubectl get svc -A
+```
 
-List built-in roles
-```
-kubectl get clusterroles
-```
+Here is a partial list of short names, but you can always see the full list
+by running `kubectl api-resources`.
 
-Using the `APIGROUP`, you can look up the version from `api-versions` using something like:
-```
-kubectl explain --api-version=apps/v1 deployments
-```
+| Full name | Short name |
+| --------- | ---------- |
+| `configmaps` | `cm` |
+| `cronjobs` | `cj` |
+| `daemonsets` | `ds` |
+| `deployments` | `deploy` |
+| `events` | `ev` |
+| `horizonalpodautoscalers` | `hpa` |
+| `ingresses` | `ing` |
+| `namespaces` | `ns` |
+| `nodes` | `no` |
+| `persistantvolumeclaims` | `pvc` |
+| `persistantvolumes` | `pv` |
+| `pods` | `po` |
+| `replicasets` | `rs` |
+| `services` | `svc` |
+| `statefulsets` | `sts` |
 
 ### Autocomplete for kubectl
 Enabling tab autocomplete can make it considerably easier to use `kubectl`. To
@@ -1532,12 +1754,6 @@ source <(kubectl completion bash)
 echo "source <(kubectl completion bash)" > /etc/bash_completion.d/kubectl
 ```
 
-### From Docker Compose to K8s using Kompose
-
-A tool to try to convert docker-compose files to Kubernetes configs: https://kompose.io/
-
-Unlikely that you would want to use the output, but it might help in the process.
-
 ### Other Implementations
 As Kubernetes is just a set of APIs, you don't technically need `kubeadm` or `kubectl`. You could
 just make API calls, or even make your own alternate commands, or recreate the official tools
@@ -1548,8 +1764,13 @@ in your own way. And people have done just that. Here are a few.
 * MicroK8s: Easier Kubernetes with Sane Defaults.
 * K3s: A "Lightweight" Kubernetes, using less memory and having smaller binaries.
 
+### From Docker Compose to K8s using Kompose
 
-## Docker Swarm Comparisons
+A tool to try to convert docker-compose files to Kubernetes configs: https://kompose.io/
+
+Unlikely that you would want to use the output, but it might help in the process.
+
+### Docker Swarm Comparisons
 
 If you are coming from Docker Swarm, here is a table of closest equivalent features in Kubernetes.
 
