@@ -966,9 +966,96 @@ for common use. These include frequent needs to describe the application and it'
 * `app.kubernetes.io/version`
 * `app.kubernetes.io/part-of`
 
-## Objects
+## Objects and Manifests
 While there are quite a different kinds of Kubernetes objects, here are some key ones you
 may want to use.
+
+Each object can be defined using manifest file, or alternatively you could use imperative
+commands. We'll continue to assume you are using manifest files.
+
+Each manifest will have certain fields required.
+
+__`apiversion:`__  
+Each object will have an API version associated with it. APIs can change over
+time and this value may also change for each object.
+
+To see all available API versions, run: `kubectl api-versions`
+To see all available resources and their associated API version value, run: `kubectl api-resources`
+
+To look up info on a specific version of a resource, pass the `--api-version` flag  to `kubectl explain`:
+```
+kubectl explain --api-version=apps/v1 deployments
+```
+
+__`kind:`__  
+Specifies the type of resource this manifest is defining. See `kubectl api-resources` for a complete list.
+
+__`metadata:`__  
+Defines metadata about the resource, such as a `name:` (required), `labels:`, or `annotations:`.
+
+__`spec:`__  
+The definition of the resource. To see specifics about the definition, use `kubectl explain`.
+
+### Pod
+A Pod is the smallest deployable container object. It defines what container(s) exists in the Pod
+and any attributes about each container.
+
+Example single container Pod:
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-single-web
+  labels:
+    app: my-web
+spec:
+  containers:
+    - image: nginx
+      name: web
+      ports:
+        - containerPort: 80
+          protocol: TCP
+          #name: http
+```
+
+### ReplicaSet
+ReplicaSets define a way to deploying a set of pod replicas. This can provide redundancy
+and load balancing versus a single pod.
+
+ReplicaSets define a numerical `replicas:` field to indicate how many replicas Kubernetes should try
+to schedule at a time. It also has a `template:` field, which holds the template for how
+the ReplicaSet should create Pods. Just like a Pod definition, the `template:` needs
+a `metadata:` and `spec:` section to define the Pod object.
+
+_However_, defining and using ReplicaSets should be avoided in general. While useful to know about,
+using other objects like Deployments, DaemonSets, and StatefulSet is strongly encouraged, as they
+have additional features beyond ReplicaSets. In fact, they use ReplicaSets behind the scenes.
+
+Example ReplicaSet manifest.
+```yaml
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: my-web
+  labels:
+    app: my-web
+spec:
+  replicas: 3
+  selector:
+    # Selector will match against the labels in the template section
+    matchLabels:
+      app: my-web
+  template:
+    # Template of the Pod manifest for replicas
+    metadata:
+      labels:
+        app: my-web
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+```
 
 ### Deployment
 TODO
@@ -1215,7 +1302,7 @@ TODO
 ### Readiness Probe
 TODO
 
-### Metrics
+## Metrics
 Kubernetes makes use of a metrics server, deployed within the `kube-system` namespace to monitor
 resource usage. This is not setup by default and is a requirement for use of
 the `kube top` command, having resource limits, and use of theautoscaling feature.
@@ -1234,16 +1321,57 @@ Example commands:
 # Get resource usage per node
 kubectl top nodes
 
-# Get resource usage for pods
+# Get resource usage for pods in all namespaces
 kubectl top pods -A
 ```
 
-### Resource Requests and Limits
-TODO
-requests: resources needed to run
-limits: max resources allowed while running
+## Pod Resource Constraints
+Assuming you have a metrics server up and running, you can set resource constraints
+on pods by use of requests and limits. ([Documentation](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/))
 
-### Taints and Tolerations
+**Requests** define how much of a resource is required before a pod can be scheduled
+on that node. If insufficient resource is available, the pod will not be scheduled on
+that node.
+
+**Limits** define the maximum amount of a resource that a pod can use. If the resource
+if memory, then a process within the container will be killed. If the main process of a
+container tries to exceed the memory limit, that contaner will be restarted.
+
+_Resource Types_  
+
+* `cpu:` CPU cores. Can be specified numerically (`2`, `0.5`) or as millicpu, where `1000m` is the same as `1` CPU.
+* `memory:` RAM use. Example allocations: `512Ki`, `256Mi`, `2Gi`, `1Ti`, or `10240` (bytes, aka 10 Kilobytes)
+
+Example manifest with resource constraints:
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  containers:
+  - name: my-web-app
+    image: my-frontend
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "0.5"
+      limits:
+        memory: "256Mi"
+        cpu: "1"
+  - name: my-data-app
+    image: my-backend
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "750m"
+      limits:
+        memory: "1Gi"
+        cpu: "1500m"
+```
+
+## Taints and Tolerations
 
 Taints flag a node such that it restricts scheduling of pods onto that node.
 We first saw this with our control plane node, which by default didn't allow
@@ -1258,7 +1386,8 @@ Taints can have three possible effects:
 The other side of taints are tolerations. Tolerations are defined in the manifest and allow that
 manifest to tolerate the taint, and thus be scheduled on the tainted node.
 
-One example of this might be to handle hardware differences of nodes. Say one node has powerful GPU installed
+One example of this might be to handle hardware differences of nodes. Or certain containers ought
+to be scheduled on specific nodes. Say one node has powerful GPU installed
 and you prefer to only run GPU heavy pods there. You can set a taint to handle this.
 
 ```
@@ -1290,6 +1419,44 @@ spec:
 ```
 
 This deployment would now be schedulable onto our tainted node without issue.
+
+## Pod Deployment Spread
+If you have 3 nodes and want to deploy a set of 2 replica pods, you would likely not want
+both replicas to on the same node. If that node went down, both replicas would go down at
+the same time.
+
+To manage how pods are deployed across nodes, Kubernetes provides topology constraints
+as a means of managing this. ([Documentation](https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/))
+
+Example of spreading replicas at max 1 per node:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+  labels:
+    app: my-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: my-deployment
+  template:
+    metadata:
+      labels:
+        app: my-deployment
+    spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: my-deployment
+      containers:
+      - name: my-nginx
+        image: nginx
+```
 
 ## kubectl Commands
 
@@ -1336,19 +1503,13 @@ TODO see the difference between file and loaded manifest (and display if the cha
 
 TODO
 
-## Helpful Tips
+## Kustomize: Templating for Kubernetes
+
+TODO
+
+## Other Helpful Tips
 
 ### List All the Things
-
-List objects
-```
-kubectl api-resources
-```
-
-Available API versions
-```
-kubectl api-versions
-```
 
 List built-in roles
 ```
