@@ -2,9 +2,9 @@
 
 It is assumed the reader has an understanding and familiarity with containerization.  
 
-_Written for Kubernetes v1.27_
+**Written for Kubernetes v1.27**
 
-*Forewarning when learning Kubernetes:* Kubernetes changes often. If you are using a
+*A Forewarning when learning Kubernetes:* Kubernetes changes often. If you are using a
 different version of Kubernetes, this documentation _may not apply to you_. Likewise,
 when searching for answers online, _many_ tutorials, guides, and answers will be
 *wrong*, as they were written for older versions.
@@ -13,7 +13,8 @@ There are also a multitude of
 Kubernetes novices creating simple guides about Kubernetes which are lacking in
 context and understanding of the material. For the most part, assume all tutorials
 are made by someone who copy-pasted various code snippets on the internet until
-something appeared to work. _Be suspect of any answers you find._
+something appeared to work. _Be suspect of any answers you find._ (I guess that includes
+this doc as well!)
 
 [[_TOC_]]
 
@@ -44,7 +45,7 @@ here for quick reference.
 * **Annotation** - A key/value pair for arbitrary data which is _not_ used to identify objects. Annotation cannot be queried or filtered, and are generally used for client libraries or tools. These can be some setting than an object requires, or a configuration change that alters how that object operates.
 * **Taint** - A key/value pair setting on a node which prevents pods from starting on that node, or can even evict a pod from the node, depending on the taint value. By default, there is a taint on control planes which prevents pods from running on them.
 * **Toleration** - A definition in a pod that allows the pod to be scheduled on a node with specific taint(s).
-* **Object** - A persistant entity within Kubernetes (e.g. pod, deployments, events, etc.) 
+* **Object** - A persistent entity within Kubernetes (e.g. pod, deployments, events, etc.) 
 * **Role** - Refers to Role-Based Access Controls (RBAC). Roles are useful for defining groups and limiting permissions within your cluster. Alternatively, can refer to the `node-role` taint which is used to identify a control plane.
 * **Resource** - Either used as a _resource type_ when used in an API call. Alternatively, it can refer to computing resources, such as CPU, RAM, or disk.
 * **ReplicaSet** - Ensures a certain number of pods are running at once. Generally, it is recommended to use _Deployment_ instead of _ReplicaSets_.
@@ -59,7 +60,7 @@ here for quick reference.
 * **CronJob** - Run a pod, specifically its command, on a given schedule.
 * **ConfigMap** - A key and value stored in Kubernetes. Used to store data across the cluster, such as environment variables or config files.
 * **Secret** - A key and value, similar to a ConfigMap, but used for secured data, such as security keys, passwords, or other sensitive data.
-* **Volume** - Provides storage to a pod which may last beyond a container's lifetime. May, or may not, refer to actual persistant storage.
+* **Volume** - Provides storage to a pod which may last beyond a container's lifetime. May, or may not, refer to actual persistent storage.
 * **StatefulSet** - Similar to a Deployment, but with additional guarantees about ordering and consistency. Helpful in creating non-stateless services.
 
 ## Basics of Kubernetes
@@ -435,6 +436,11 @@ kubectl get pods --all-namespaces
 
 If all pods looks okay, your cluster should be online.
 
+You can also see the control plane and core DNS urls via:
+```
+kubectl cluster-info
+```
+
 ### Networking
 
 Kubernetes doesn't prescribe a set of networking tools to use, rather
@@ -471,7 +477,7 @@ Designed to handle large and complex networks more efficiently.
 
 * https://github.com/cilium/cilium
 
-#### Some Additional Options
+#### Additional Options
 More networking solutions for those interested in researching them.
 
 * Weave Net: https://github.com/weaveworks/weave
@@ -835,8 +841,6 @@ To remove a label manually, set the pass the key followed by a `-`.
 kubectl label pods -l app=my-app tier-
 ```
 
-it's not just you who uses labels, kubernetes uses labels/selectors internally to manage things
-
 While not a requirement, Kubernetes does have a set of
 [recommended labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
 for common use. These include frequent needs to describe the application and it's purpose, such as:
@@ -847,13 +851,13 @@ for common use. These include frequent needs to describe the application and it'
 
 ## Volumes
 
-Volumes provide storage beyond the operation of a pod.
+Volumes provide storage beyond the operation of a Pod.
 
 ### Type: emptyDir
 Creates an empty directory when first pod is deployed, which persists on the node where
-is was created so long as the pod exists. Note, even if the pod crashes, the volume
-will persist. The volume is removed if that that pod is intensionally restarted or the pod
-is removed from the node.
+is was created so long as the pod exists. Even if the pod crashes, the volume
+will persist. The volume is removed if that that pod is intentionally stopped, restarted,
+updated, or the pod is removed from that specific node.
 ```yaml
 apiVersion: v1
 kind: Pod
@@ -871,10 +875,10 @@ spec:
       sizeLimit: 512Mi
 ```
 
-#### Type: hostPath
+### Type: hostPath
 Mount storage from the host node at from the given path.
 Can be dangerous on multi-node cluster as there is no guarantee the pod will always be
-on the same node.
+scheduled to the same node.
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -897,9 +901,9 @@ spec:
             path: /mnt/node_path
 ```
 
-#### Type: Local PersistantVolume
+### Type: Local PersistentVolume
 Works similar to `hostPath` volumes, except Kubernetes will always reschedule the same pod
-onto the same node. This means the data will always be persitant to that pid. Of course when the
+onto the same node. This means the data will always be persitent to that Pod. Of course when the
 node is unavailable, the pod will be offline.
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -958,8 +962,11 @@ spec:
         claimName: local-pcv
 ```
 
-#### Type: ConfigMap
-TODO ConfigMap (can only be read-only)
+### Type: ConfigMap
+[ConfigMaps](#configmaps-and-secrets) can also be leveraged as a mount type.
+Data set in a ConfigMap can be mapped onto the Pod, albeit read-only.
+
+Example mounting `data.files.my-data` into a Pod at `/etc/basepath/my-data.txt`:
 ```yaml
 apiVersion: v1
 kind: ConfigMap
@@ -991,7 +998,7 @@ spec:
           path: my-data.txt
 ```
 
-#### Other options
+### Other options
 TODO longhorn: block storage hosted in cluster with replicas across nodes
 TODO also many other options, such as external NFS, but via external providers (mounted similar to local pv)
 
@@ -1111,7 +1118,7 @@ __`kind:`__
 Specifies the type of resource this manifest is defining. See `kubectl api-resources` for a complete list.
 
 __`metadata:`__  
-Defines metadata about the resource, such as a `name:` (required), `labels:`, or `annotations:`.
+Defines metadata about the resource, such as a `name:` (required), `namespace:`, `labels:`, or `annotations:`.
 
 __`spec:`__  
 The definition of the resource. To see specifics about the definition, use `kubectl explain`.
@@ -1130,6 +1137,7 @@ _Common fields for Pod spec definitions:_
 * `envFrom:` Define environment variables to be loaded from ConfigMaps or Secrets.
 * `command:` Set the entrypoint for the container (note, this value is passed as a list).
 * `args:` The command and arguments for the container.
+* `terminationGracePeriodSeconds:` When killing a Pod, how long after sending SIGTERM until a SIGKILL is sent. Default: `30`
 
 For full listing of fields, see `kubectl explain pod.spec`.
 
@@ -1140,6 +1148,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: my-single-web
+  # namespace: default
   labels:
     app: my-web
 spec:
@@ -1153,6 +1162,49 @@ spec:
     - containerPort: 80
       protocol: TCP
 ```
+
+### Service
+A Service make Pods available on a network. While a Pod may define `ports:`, those ports
+do not become accessible until a Service is defined to make it so. Creating a Service
+will create a ClusterIP to service as a load balancer. The Service will then load balance
+to all matching Pods.
+
+Service matches Pods it should be service via a `selector:`, meaning Pods must have appropriate
+labels create on them before a Service can connect to them. Of special note, the Pods _only_ need
+to match the Service's `selector:` to be service. If the label(s) in question are used by multiple
+objects, then the Service will happy load balance for all them simultaneously.
+
+Example Service manifest:
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  labels:
+    app: public-service
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: nginx-pod
+```
+
+#### Headless Service
+By default, Services provide a new ClusterIP which serves as an internal load balancer IP
+for accessing the connected Pods. A headless service is one without this load balancing.
+
+To make a service headless, set `ClusterIP: None` in the manifest. The result will be
+the service name being a round-robin DNS to the pods. Additionally, with StatefulSets
+the DNS name for each replica pod will be available as sub-domains of the service DNS.
+
+With headless service name of `my-service` and StatefulSet name of `my-state` with 3 replicas,
+DNS will names would be:
+
+* `my-service` Round robin DNS to the 3 Pod replicas IPs.
+* `my-state-0.my-service` The IP address to replica 0.
+* `my-state-1.my-service` The IP address to replica 1.
+* `my-state-2.my-service` The IP address to replica 2.
 
 ### ReplicaSet
 ReplicaSets define a way to deploying a set of pod replicas. This can provide redundancy
@@ -1178,7 +1230,7 @@ metadata:
 spec:
   replicas: 3
   selector:
-    # Selector will match against the labels in the template section
+    # Selector here matches labels in the template section
     matchLabels:
       app: my-web
   template:
@@ -1193,7 +1245,8 @@ spec:
 ```
 
 ### Deployment
-A deployment is was of managing updates to ReplicaSets. It can handle making
+A [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
+is a way of managing updates to ReplicaSets. It can handle making
 rollouts (deployment of changes) for the Pods in the ReplicaSet. Note that
 _you do not define a ReplicaSet for a Deployment_; the Deployment is an object
 that contains a ReplicaSet automatically.
@@ -1210,31 +1263,300 @@ rollouts can be done via `kubectl rollout`.
 * `kubectl rollout undo deployment my-deployment` Rollback the given deployment to the previous revision.
 * `kubectl rollout undo deployment my-deployment --to-revision 3` Rollback the given deployment to the specified revision.
 
-TODO
-strategies: recreate, rollingupdate
- - `minReadySeconds`
- - `progressDeadlineSeconds`
- - `updateStrategy.rollingUpdate.maxUnavailable` define the number of pods wich can upgraded at once
+Rollouts can be customized quite extensively.
 
+**`.spec.strategy`** values:  
+
+ * `Recreate`: All pods are stopped prior to creating new pods to replace them.
+ * `RollingUpdate`: Pods are stopped and replaced in a more gradual manner. (Default)
+
+Additional Deployment options:  
+
+* `.spec.minReadySeconds`: How many seconds a Pod has to be ready before being considered available. Default: `0`
+* `.spec.revisionHistoryLimit`: How many previous deployment revisions to allow rolling back to. Default: `10`
+* `.spec.strategy.rollingUpdate.maxUnavailable`: Max number of pods that can become unavailable during a RollingUpdate. Can be a numer or percentage. Default: `25%`
+* `.spec.strategy.rollingUpdate.maxSurge`: Max number of pod that can be created in excess of the `replicas:` count. These are new pods being prepared before the old pods are removed. Can be a number or percentage. Default: `25%`
+
+An example Deployment manifest:
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+  labels:
+    app: my-web
+spec:
+  replicas: 3
+  minReadySeconds: 15
+  revisionHistoryLimit: 4
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: my-web-replicas
+  template:
+    metadata:
+      labels:
+        app: my-web-replicas
+    spec:
+      containers:
+      - name: my-web-nginx
+        image: nginx
+        ports:
+        - containerPort: 80
+```
 
 ### DaemonSet
-TODO
+A [DaemonSet](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/)
+is similar to a Deployment, except instead of replicas, a DaemonSet will always run a
+single Pod on each of the cluster nodes. DaemonSets will not run on a control plane node if that node
+has it's default taint, unless you set the DaemonSet to have tolerance for that taint.
 
-### ConfigMap and Secrets
-TODO
+DaemonSets are otherwise very similar to Deployments. There is one notable difference, however. While
+`RollingUpdate` is still the default `strategy:` for updates, the DaemonSet does not have a `Recreate`
+strategy, but rather a `OnDelete` strategy.
 
-Updating either of these results in immediate update to running containers.
-If the running app can re-read the location where the data is presented, it
-would have no need to restart anything to get the updated data.
+The `OnDelete` strategy updates the manifest, but leaves the old Pods running as they were. Only when
+a Pod is manually removed will a new Pod be created, using the new manifest.
 
-Can store either:
-* utf-8 string
-* binary data in base64
+Example DaemonSet manifest:
+```yaml
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: my-daemon
+  namespace: my-global-pods
+spec:
+  selector:
+    matchLabels:
+      name: my-daemon-pod
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        name: my-daemon-pod
+    spec:
+      # Toleration to have the DaemonSet runon control plane nodes; only needed if default taint was left in place
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: my-global
+        image: my-global-image
+```
 
-max size: 1 MB
+### StatefulSet
+[StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) are also similar
+to Deployments, only they provide additional guarantees. A StatefulSet
+is designed to help with creating applications that must maintain a state. Things like datastores (SQL, NoSQL),
+indexers (Solr), and the like.
 
-https://kubernetes.io/docs/concepts/configuration/configmap/
-https://kubernetes.io/docs/concepts/configuration/secret/
+To help in deployment of stateful applications, the StatefulSet offers the following:
+
+* Stable persistant network identifiers, starting from `0` (default). E.g. `my-sset-0`, `my-sset-1`, `my-sset-2`, etc.
+* Ordering of creation and startup of new Pods, from lowest number to highest.
+* Ordered scaling down of of Pods, always removing the highest numbered first.
+* Pods are always re-scheduled onto the same node. E.g. `my-sset-0` will only ever be scheduled on the first node it was schedule on.
+* Volumes (persistant ones, that is) associated with a StatefulSet are not deleted the StatefulSet is scaled down or removed.
+
+Similar to DaemonSets, StatefulSets support `RollingUpdate` and `OnDelete` strategies only.
+
+Additionally, StatefulSets are strongly encouraged (official documentation says required) to
+have a [headless service](#headless-service) defined, that is a service _without_ a ClusterIP assigned. By default,
+services get a new ClusterIP that does load balancing internal to the cluster. By setting
+`ClusterIP: None`, you make the service lack the load balancer IP. Instead the service name will
+provide round-robin DNS to each replica in the StatefulSet. Additionally, each individual pod can
+be reached at a sub-domain address of the service name.
+
+For the example manifests below, DNS would be:
+* `nginx-svc` Round robin for all 3 replicas.
+* `my-sset-0.nginx-svc` Access the first replica.
+* `my-sset-1.nginx-svc` Access the second replica.
+* `my-sset-2.nginx-svc` Access the third replica.
+
+Example StatefulSet and Headless Service manifest:
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-svc
+  labels:
+    app: nginx-svc
+spec:
+  ports:
+  - port: 80
+  clusterIP: None
+  selector:
+    app: nginx-sset
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: my-sset
+  labels:
+    app: nginx-sset
+spec:
+  replicas: 3
+  serviceName: nginx-svc
+  selector:
+    matchLabels:
+      app: nginx-sset
+  template:
+    metadata:
+      labels:
+        app: nginx-sset
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        ports:
+        - containerPort: 80
+```
+
+### ConfigMap
+A [ConfigMap(https://kubernetes.io/docs/concepts/configuration/configmap/) is a way to
+have key-value storage within Kubernetes. As ConfigMap data is stored within Kubernetes,
+there are no additional steps to sync the data across nodes in the cluster. All nodes
+accessing a ConfigMap will always read the same data.
+
+Updating a ConfigMap results in immediate an immediate update to running containers.
+If the running app re-reads the location where the data is presented (e.g. an enviroment variable),
+you should have no need to restart anything to make the updated data go live.
+
+ConfigMaps can store both UTF-8 strings (`data:` section) or base64 encoded binary data (`binaryData:`
+section). Keys must be unique across both sections (you cannot `data.my-key-name` and `binaryData.my-key-name`
+in the same ConfigMap). Each ConfigMap is limited to a max 1MB in total size.
+
+Example ConfigMap manifest:
+```yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alumni-settings
+data:
+  # property-like keys
+  versionNum: "7.0"
+  accountGreeting: "Welcome XYZ Alumni!"
+  # file-like keys
+  app.settings: |
+    [theming]
+    color.primary=white
+    color.secondary=green
+    layout=left-column
+binaryData:
+  # binary file-like data in stored in base64
+  datFile: |
+    QWhveSB0aGVyZSEgSGVyZSBiZSB0aGUgYmluYXJ5
+    IGRhdGEsIG1hdGV5ISBZYWFycnJyIQo=
+```
+
+ConfigMaps can be referenced within manifests, such as setting environment variables
+or mapping files into containers via volume mounts. ConfigMap data set into a comtainter
+is read-only; you cannot update a ConfigMap value my modifying the data from within the
+container.
+
+Example manifest using ConfigMap data:
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-configmap-pod
+spec:
+  containers:
+  - name: my-configmap-web
+    image: nginx
+    env:
+    - name: VERSION_NUM
+      valueFrom:
+        configMapKeyRef:
+          name: alumni-settings     # ConfigMap name
+          key: versionNum           # data key name
+    - name: GREETING_MSG
+      valueFrom:
+        configMapKeyRef:
+          name: alumni-settings
+          key: accountGreeting
+    volumeMounts:
+    - name: my-configmap-vols
+      mountPath: "/etc/alumni"
+      readOnly: true
+  volumes:
+  - name: my-configmap-vols
+    configMap:
+      name: alumni-settings
+      # list of file mappings from ConfigMap key to filename in container
+      items:
+      - key: "app.settings"
+        path: "settings.ini"
+      - key: "datFile"
+        path: "bin.dat"
+```
+
+### Secrets
+[Secrets](https://kubernetes.io/docs/concepts/configuration/configmap/) are very similar to ConfigMaps,
+and have mostly the same features and limitations, but they are
+intended for sensitive or confidential data such as keys or passwords. Secrets are _not_ stored in
+an encrypted manner by default. Refer to the documentation if you want to secure your Secrets storage.
+
+Secrets are handled differently within Kubernetes, with additional protections on how/if the data is
+presenting to Pods.
+
+Of Historical note, ConfigMaps are newer than Secrets, as there were _only_ Secrets in past versions
+of Kubernetes.
+
+Secrets manifets are slightly different from ConfigMaps. Secrets can still store both UTF-8 strings
+(`stringData:` section) or base64 encoded binary data (`data:` section), but the section key names
+are different. Additionally, Secrets can specify a `type:` which will help Kubernetes know more
+context about the data. For example, setting a type can change what fields are required to be
+defined in the Secret. The default `type:` is `Opaque` which does not have any restrictions or special
+handling.
+
+When referencing Secret in a manifest, you can set it to be `optional: true`. When set and the
+referenced value does not exist, Kubernetes will ignore it. By default, Secrets referenced
+in a manifest are considered to be required.
+
+Example Secret manifest:
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-secrets
+type: Opaque
+stringData:
+  authuser.txt: my-auth-user
+  authpass.txt: greatPasswordHere
+```
+
+Example manifest using ConfigMap data:
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-secret-needing-pod
+spec:
+  containers:
+  - name: my-secret-pod
+    image: nginx
+    volumeMounts:
+    - name: etc-secret
+      mountPath: "/etc/secrets"
+      readOnly: true
+  volumes:
+  - name: etc-secret
+    secret:
+      secretName: my-secrets
+```
 
 ### Service
 A service provides a way to export a port, either internally or externally. By default,
@@ -1266,7 +1588,7 @@ A popular LoadBalancer for self-managed clusters is **[MetalLB](https://metallb.
 Note: If you are using Docker Swarm on a node, you may run into a port conflict with MetalLB as
 both make use of port 7946.
 
-#### Preparation
+#### Preparing
 MetalLB requires a couple changes to your `kube-proxy` before proceeding. Both IP Virtual Server (IPVS)
 and change how ARP requests are handled. By default, `kube-proxy` uses IPTables. IPVS is designed to
 for load balancing, whereas IPTables is firewall software.
@@ -1291,7 +1613,7 @@ kubectl get configmap kube-proxy -n kube-system -o yaml | \
     kubectl apply -f - -n kube-system
 ```
 
-#### Apply Manifest
+#### Starting
 Find a stable version of MetalLB to use (don't apply the `master` branch). Note in this example, we are
 using version `v0.13.10`.
 ```sh
@@ -1444,6 +1766,7 @@ defined if you want your pods to be monitored.
 
 ### Startup Probe
 TODO
+initialDelaySeconds: Number of seconds after the container has started before liveness or readiness probes are initiated.
 
 ### Liveness Probe
 TODO
@@ -1519,6 +1842,9 @@ spec:
         memory: "1Gi"
         cpu: "1500m"
 ```
+
+## Events
+TODO
 
 ## Taints and Tolerations
 
@@ -1637,8 +1963,12 @@ TODO common and useful commands, links to docs
 `kubectl logs -n kube-system <podName>`
 `kubectl logs -n kube-system <podName> --previous`
 
+to get all logs for a deployment/daemonset/statefulset at once, must use labels
+`kubectl logs -n kube-system -f -l k8s-app=kube-dns`
+
 `kubectl -n kube-system edit cm <cmName>` Edit config map
 
+TODO note you can exec to any container from any node. wow!
 `kubectl exec -i -t shell-demo -- /bin/bash` # exec in pod with single container (no need to specify)
 
 `kubectl exec -i -t my-pod --container main-app -- /bin/bash` # selecting container from multi-container pod
@@ -1665,7 +1995,40 @@ TODO see the difference between file and loaded manifest (and display if the cha
 
 ## Helm: The Kubernetes Package Manager
 
+Helm is an extra tool which can be used to quickly and easily deploy complete applications,
+including all the object required. As most installtions need some changes, it allows for you
+to customize parts of the application as well.
+
+Installtion of Helm: https://v2.helm.sh/docs/using_helm/#installing-helm
+
+Helm is similar to other package managers, just with slightly different terminology because it's
+not like Kubernetes doesn't already have a hundred other bespoke terms you need to keep track of.
+
+* Repository: A URL location where definitions for Helm are hosted.
+* Chart: The name Helm uses to define package.
+* Release: An instanced of a deployed chart.
+* Artifact Hub: A central listing of repositories.
+
+### Finding or Adding a Repository
 TODO
+https://helm.sh/docs/intro/using_helm/
+
+### Installing a Package as a Release
+TODO
+https://helm.sh/docs/intro/using_helm/#more-installation-methods
+
+#### Customizing a Release
+TODO
+
+### Upgrading a Release
+TODO
+
+### Rollback of a Release
+TODO
+
+### Removing a Release
+TODO
+
 
 ## Kustomize: Templating for Kubernetes
 
@@ -1736,8 +2099,8 @@ by running `kubectl api-resources`.
 | `ingresses` | `ing` |
 | `namespaces` | `ns` |
 | `nodes` | `no` |
-| `persistantvolumeclaims` | `pvc` |
-| `persistantvolumes` | `pv` |
+| `persistentvolumeclaims` | `pvc` |
+| `persistentvolumes` | `pv` |
 | `pods` | `po` |
 | `replicasets` | `rs` |
 | `services` | `svc` |
