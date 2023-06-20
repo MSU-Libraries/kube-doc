@@ -411,9 +411,13 @@ Will output the taints on your nodes.
 ]
 ```
 
-If you want control-plane nodes to schedule and run pods, you'll need to
+If you want control plane nodes to schedule and run pods, you'll need to
 remove the taint.
 ```
+# Remove control plane taint from specific node
+kubectl taint nodes kube1.test.lib.msu.edu node-role.kubernetes.io/control-plane-
+
+# Remote control plane taint from all nodes 
 kubectl taint nodes --all node-role.kubernetes.io/control-plane-
 ```
 
@@ -851,7 +855,7 @@ for common use. These include frequent needs to describe the application and it'
 
 ## Volumes
 
-Volumes provide storage beyond the operation of a Pod.
+Volumes provide a means of storage beyond the lifespan of a container.
 
 ### Type: emptyDir
 Creates an empty directory when first pod is deployed, which persists on the node where
@@ -963,10 +967,11 @@ spec:
 ```
 
 ### Type: ConfigMap
-[ConfigMaps](#configmaps-and-secrets) can also be leveraged as a mount type.
-Data set in a ConfigMap can be mapped onto the Pod, albeit read-only.
+[ConfigMaps](#configmaps) and [Secrets](#secrets) can also be leveraged as a mount type.
+Data set in these can be mapped onto the Pod, albeit read-only. Note that there are
+slight difference between ConfigMaps and Secrets. See the relevant documentation for details.
 
-Example mounting `data.files.my-data` into a Pod at `/etc/basepath/my-data.txt`:
+Example mounting `data.files.my-data` from a ConfigMap into a Pod at `/etc/basepath/my-data.txt`:
 ```yaml
 apiVersion: v1
 kind: ConfigMap
@@ -998,9 +1003,16 @@ spec:
           path: my-data.txt
 ```
 
-### Other options
-TODO longhorn: block storage hosted in cluster with replicas across nodes
-TODO also many other options, such as external NFS, but via external providers (mounted similar to local pv)
+### Other Volume Options
+Additional options for volumes include using external storage, such as NFS mounts. These can
+be used in similar manner to the local PersistantVolume, only they aren't local.
+
+There are also cluster storage solutions for creating distributed internal storage within
+the cluster. These include:
+
+* [Longhorn](https://longhorn.io/) ([GitHub](https://github.com/longhorn/longhorn)): Block storage hosted in cluster with replicas across nodes.
+* [Rook](https://rook.io/) ([GitHub](https://github.com/rook/rook)): Ceph based distributed storage for Kubernetes.
+* [OpenEBS](https://openebs.io/) ([GitHub](https://github.com/openebs/openebs)): Distributed storage in Kubernetes with a number of different backends to choose from.
 
 ## Writing Manifests
 
@@ -1524,7 +1536,7 @@ When referencing Secret in a manifest, you can set it to be `optional: true`. Wh
 referenced value does not exist, Kubernetes will ignore it. By default, Secrets referenced
 in a manifest are considered to be required.
 
-Example Secret manifest:
+Example Secret manifest mounting two `stringValues` as files in `/etc/secrets/`:
 ```yaml
 ---
 apiVersion: v1
@@ -1751,13 +1763,84 @@ spec:
 ```
 
 ### Job
-TODO
-- one shot
-- parallel fixed completion
-- work queue: parallel jobs
+[Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/) are
+tasks that you can schedule to have Kubernetes run. Once a Job has completed,
+that's all there is. It doesn't do anything else.
+
+Jobs can be run repeatedly and in parallel across the cluster if desired.
+By setting `ttlSecondsAfterFinished:`, your jobs can automatically remove themselves
+after a specified period once completed.
+
+Example Job manifest:
+```yaml
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: not-a-dos-attack
+spec:
+  ttlSecondsAfterFinished: 120
+  completions: 30
+  parallelism: 6
+  template:
+    spec:
+      restartPolicy: "OnFailure"
+      containers:
+        - name: minion
+          image: curlimages/curl
+          args: ["-s", "https://www.cloudflare.com/"]
+```
 
 ### CronJob
-TODO
+[CronJobs](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/) are
+based on Jobs, but run on a repeating schedule. Setting `schedule:` for a CronJob
+is in the same format you'd expect in an `/etc/crontab` file.
+
+Example `schedule:` values:
+
+* `*    * * * *` Run every minute of every day
+* `*/30 * * * *` Run every half hour
+* `15   2 5 * *` Run at 2:15am on the 5th of each month
+* `0   17 * * 0` Run at 5pm every Sunday
+
+CronJobs do have additional features availble not normally seen with most cron services.
+
+* `concurrencyPolicy:` Can a CronJob run concurrently with a previous instance of the same job. Values: `Allow` (default), `Forbid`, `Replace`
+* `startingDeadlineSeconds:` If a CronJob could not run on schedule, allow for a late start up this this many seconds.
+* `successfulJobsHistoryLimit:` Keep this many successful CronJobs in the job history. Default: `3`
+* `failedJobsHistoryLimit:` Keep this many failed CronJobs in the job history. Default: `1`
+
+Example CronJob manifest:
+```yaml
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: my-cron
+spec:
+  schedule: "0 * * * *"
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 5
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: my-cron-job
+            image: busybox
+            command:
+            - /bin/sh
+            - -c
+            - echo "It's $( date ) and all's well."
+          restartPolicy: Never
+```
+
+Note that CronJobs create regular Jobs. For example, when looking for your CronJob jobs
+they will be under the `jobs` type.
+```sh
+kubectl logs jobs/my-cron-28121574
+```
 
 ## Checking Pod Health
 Kubernetes uses probes to determine if a pod is up, alive, and ready to
@@ -1844,7 +1927,37 @@ spec:
 ```
 
 ## Events
-TODO
+An [Event](https://kubernetes.io/docs/reference/kubernetes-api/cluster-resources/event-v1/) is a
+record of report with the cluster, typically of a state change that has happened. Examples of common
+Events are:
+
+* A Pod being scheduled
+* Pulling of an image
+* A Container being created or started
+* Failure to create a volume mount
+
+Most anything that happens within a Kubernetes cluster has an Event associated with it. Events
+can be of two types `Normal` and `Warning`.
+
+```sh
+# List only Event of type Warning from all namespaces
+kubectl get events -A --field-selector type=Warning
+```
+
+By default, Events are kept for only 1 hour before being removed, but can be modified by setting
+the `--event-ttl` flag to the API server. First use `kubeadm config print init-defaults` to find
+the appropriate `apiVersion` and `kubernetesVersion`, then create your custom manifest with
+the `apiServer.extraArgs.event-ttl` set to your custom value, and apply it.
+
+Example manifest updating Event TTL to 4 hours and 30 mintes.
+```yaml
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+kubernetesVersion: 1.27.0
+apiServer:
+  extraArgs:
+    event-ttl: "4h30m0s"
+```
 
 ## Taints and Tolerations
 
@@ -2074,6 +2187,12 @@ spec:
 ```
 
 ## Other Helpful Tips
+
+### Host Service Logs
+Logs for containerd and kubelet go into `/var/log/syslog` by default. If you'd like them configured
+with separate log files, you must add a configuration in `rsyslog`.
+
+TODO
 
 ### Resource Abbreviations
 You may have noticed that when referencing resources, both plural singular are allowed.
