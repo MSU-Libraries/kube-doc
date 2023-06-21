@@ -1087,6 +1087,7 @@ have additional features beyond ReplicaSets. In fact, they use ReplicaSets behin
 
 Example ReplicaSet manifest.
 ```yaml
+---
 apiVersion: apps/v1
 kind: ReplicaSet
 metadata:
@@ -1227,8 +1228,8 @@ To help in deployment of stateful applications, the StatefulSet offers the follo
 
 * Stable persistant network identifiers, starting from `0` (default). E.g. `my-sset-0`, `my-sset-1`, `my-sset-2`, etc.
 * Ordering of creation and startup of new Pods, from lowest number to highest.
-* Ordered scaling down of of Pods, always removing the highest numbered first.
-* Pods are always re-scheduled onto the same node. E.g. `my-sset-0` will only ever be scheduled on the first node it was schedule on.
+* Ordered scaling down of Pods, always removing the highest numbered first.
+* On scaling up Pods, it is always done from low identifier first. Pods must be alive and ready before the next Pod is scheduled.
 * Volumes (persistant ones, that is) associated with a StatefulSet are not deleted the StatefulSet is scaled down or removed.
 
 Similar to DaemonSets, StatefulSets support `RollingUpdate` and `OnDelete` strategies only.
@@ -1726,15 +1727,15 @@ spec:
       # -- snip --
     spec:
       containers:
-        - name: my-deploys
-          # -- snip --
-          volumeMounts:
-            - name: mymount
-              mountPath: /opt/container_path
-      volumes:
+      - name: my-deploys
+        # -- snip --
+        volumeMounts:
         - name: mymount
-          hostPath:
-            path: /mnt/node_path
+          mountPath: /opt/path
+      volumes:
+      - name: mymount
+        hostPath:
+          path: /mnt/node_path
 ```
 
 ### Type: Local PersistentVolume
@@ -1742,6 +1743,7 @@ Works similar to `hostPath` volumes, except Kubernetes will always reschedule th
 onto the same node. This means the data will always be persitent to that Pod. Of course when the
 node is unavailable, the pod will be offline.
 ```yaml
+---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -1837,7 +1839,7 @@ spec:
 
 ### Other Volume Options
 Additional options for volumes include using external storage, such as NFS mounts. These can
-be used in similar manner to the local PersistantVolume, only they aren't local.
+be used in similar manner to the local PersistentVolume, only they aren't local.
 
 There are also cluster storage solutions for creating distributed internal storage within
 the cluster. These include:
@@ -2036,6 +2038,12 @@ can be of two types `Normal` and `Warning`.
 ```sh
 # List only Event of type Warning from all namespaces
 kubectl get events -A --field-selector type=Warning
+
+# List events for given Pod and watch for new events
+kubectl events --for pod/my-web --watch
+
+# List events in Yaml format
+kubectl events -o yaml
 ```
 
 By default, Events are kept for only 1 hour before being removed, but can be modified by setting
