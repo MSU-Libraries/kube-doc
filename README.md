@@ -712,7 +712,7 @@ To see all current namespaces:
 kubectl get namespaces
 ```
 
-## Using kubectl
+## Using `kubectl`
 The main command for interacting with your running cluster is `kubectl`. As you will be
 using this command so often, you will be greatly helped by [setting up Bash autocompletion](#autocomplete-for-kubectl)
 as soon as possible.
@@ -853,167 +853,6 @@ for common use. These include frequent needs to describe the application and it'
 * `app.kubernetes.io/version`
 * `app.kubernetes.io/part-of`
 
-## Volumes
-
-Volumes provide a means of storage beyond the lifespan of a container.
-
-### Type: emptyDir
-Creates an empty directory when first pod is deployed, which persists on the node where
-is was created so long as the pod exists. Even if the pod crashes, the volume
-will persist. The volume is removed if that that pod is intentionally stopped, restarted,
-updated, or the pod is removed from that specific node.
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: my-pod
-spec:
-  containers:
-  - name: my-containter
-    volumeMounts:
-    - mountPath: /cache
-      name: mycache
-  volumes:
-  - name: mycache
-    emptyDir:
-      sizeLimit: 512Mi
-```
-
-### Type: hostPath
-Mount storage from the host node at from the given path.
-Can be dangerous on multi-node cluster as there is no guarantee the pod will always be
-scheduled to the same node.
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-deployment
-spec:
-  template:
-    metadata:
-      # -- snip --
-    spec:
-      containers:
-        - name: my-deploys
-          # -- snip --
-          volumeMounts:
-            - name: mymount
-              mountPath: /opt/container_path
-      volumes:
-        - name: mymount
-          hostPath:
-            path: /mnt/node_path
-```
-
-### Type: Local PersistentVolume
-Works similar to `hostPath` volumes, except Kubernetes will always reschedule the same pod
-onto the same node. This means the data will always be persitent to that Pod. Of course when the
-node is unavailable, the pod will be offline.
-```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: local-storage
-provisioner: kubernetes.io/no-provisioner
-volumeBindingMode: WaitForFirstConsumer
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: local-pv
-spec:
-  capacity:
-    storage: 2Gi
-  volumeMode: Filesystem
-  storageClassName: local-storage
-  local:
-    path: /mnt/my-data
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-      - matchExpressions:
-        - key: kubernetes.io/hostname
-          operator: In
-          values:
-          - kube1.test.lib.msu.edu
----
-kind: PersistentVolumeClaim
-apiVersion: v1
-metadata:
-  name: local-pvc
-spec:
-  accessModes:
-  - ReadWriteOnce
-  storageClassName: local-storage
-  resources:
-    requests:
-      storage: 2Gi
----
-apiVersion: v1
-kind: Pod
-metadata:
-  # -- snip --
-spec:
-  containers:
-  - name: my-app
-    # -- snip --
-    volumeMounts:
-      - name: my-local-storage
-        mountPath: /mnt/storage
-  volumes:
-    - name: my-local-storage
-      persistentVolumeClaim:
-        claimName: local-pcv
-```
-
-### Type: ConfigMap
-[ConfigMaps](#configmaps) and [Secrets](#secrets) can also be leveraged as a mount type.
-Data set in these can be mapped onto the Pod, albeit read-only. Note that there are
-slight difference between ConfigMaps and Secrets. See the relevant documentation for details.
-
-Example mounting `data.files.my-data` from a ConfigMap into a Pod at `/etc/basepath/my-data.txt`:
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: my-config-map
-data:
-  files.my-data: |
-    This is my file!
-    Which contains my data!
-```
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: my-pod
-spec:
-  containers:
-    - name: my-container
-      # -- snip --
-      volumeMounts:
-      - name: cm-volume
-        mountPath: /etc/basepath
-  volumes:
-    - name: cm-volume
-      configMap:
-        name: my-config-map
-        items:
-        - key: files.my-data
-          path: my-data.txt
-```
-
-### Other Volume Options
-Additional options for volumes include using external storage, such as NFS mounts. These can
-be used in similar manner to the local PersistantVolume, only they aren't local.
-
-There are also cluster storage solutions for creating distributed internal storage within
-the cluster. These include:
-
-* [Longhorn](https://longhorn.io/) ([GitHub](https://github.com/longhorn/longhorn)): Block storage hosted in cluster with replicas across nodes.
-* [Rook](https://rook.io/) ([GitHub](https://github.com/rook/rook)): Ceph based distributed storage for Kubernetes.
-* [OpenEBS](https://openebs.io/) ([GitHub](https://github.com/openebs/openebs)): Distributed storage in Kubernetes with a number of different backends to choose from.
-
 ## Writing Manifests
 
 Objects have _manifests_, which define the desired state of that object, also referred to
@@ -1135,8 +974,9 @@ Defines metadata about the resource, such as a `name:` (required), `namespace:`,
 __`spec:`__  
 The definition of the resource. To see specifics about the definition, use `kubectl explain`.
 
-### Pod
-A Pod is the smallest deployable container object. It defines what container(s) exists in the Pod
+### Pods
+A [Pod](https://kubernetes.io/docs/concepts/workloads/pods/) is the smallest
+deployable container object. It defines what container(s) exists in the Pod
 and any attributes about each container. _Note: many values in running pod container cannot be updated._
 The Pod has to be replaced in order for these changes to take effect.
 
@@ -1175,7 +1015,12 @@ spec:
       protocol: TCP
 ```
 
-### Service
+Additional containers beyond the first in a Pod are often referred to as a __sidecar__. There
+can be valid reason to have sidecars, but a single Pod shouldn't contain a whole stack of services.
+It is better to separate major servies out into their own deployments and facilitate their communication
+by using Services.
+
+### Services
 A Service make Pods available on a network. While a Pod may define `ports:`, those ports
 do not become accessible until a Service is defined to make it so. Creating a Service
 will create a ClusterIP to service as a load balancer. The Service will then load balance
@@ -1201,6 +1046,15 @@ spec:
   selector:
     app: nginx-pod
 ```
+
+By default, Services are of the `type` is `ClusterIP`, which makes the port available
+to an IP only within the cluster.
+
+You can make a service available on a host using the `type` of `NodePort`. With `NodePort`
+the port on each node is proxied into the service from the node's host IPs. However,
+services can only be exposed on a limited port range using this, by default 30000-32767.
+You *can* change the `NodePort` range to include reserved ports such as 80 and 443, but it
+is strongly discouraged in favor of using LoadBalancers and IngressControllers.
 
 #### Headless Service
 By default, Services provide a new ClusterIP which serves as an internal load balancer IP
@@ -1256,7 +1110,7 @@ spec:
         image: nginx
 ```
 
-### Deployment
+### Deployments
 A [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
 is a way of managing updates to ReplicaSets. It can handle making
 rollouts (deployment of changes) for the Pods in the ReplicaSet. Note that
@@ -1320,7 +1174,7 @@ spec:
         - containerPort: 80
 ```
 
-### DaemonSet
+### DaemonSets
 A [DaemonSet](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/)
 is similar to a Deployment, except instead of replicas, a DaemonSet will always run a
 single Pod on each of the cluster nodes. DaemonSets will not run on a control plane node if that node
@@ -1363,7 +1217,7 @@ spec:
         image: my-global-image
 ```
 
-### StatefulSet
+### StatefulSets
 [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) are also similar
 to Deployments, only they provide additional guarantees. A StatefulSet
 is designed to help with creating applications that must maintain a state. Things like datastores (SQL, NoSQL),
@@ -1432,7 +1286,7 @@ spec:
         - containerPort: 80
 ```
 
-### ConfigMap
+### ConfigMaps
 A [ConfigMap(https://kubernetes.io/docs/concepts/configuration/configmap/) is a way to
 have key-value storage within Kubernetes. As ConfigMap data is stored within Kubernetes,
 there are no additional steps to sync the data across nodes in the cluster. All nodes
@@ -1570,18 +1424,7 @@ spec:
       secretName: my-secrets
 ```
 
-### Service
-A service provides a way to export a port, either internally or externally. By default,
-the `type` is `ClusterIP`, which makes the port available to an IP only within the cluster.
-
-You can make a service available on a host using the `type` of `NodePort`. However,
-services can only be exposed on a limited port range using this, by default 30000-32767.
-
-With `NodePort`, the port on each node is proxied into the service from the node's host IPs.
-
-You *can* change the `NodePort` range to include reserved ports such as 80 and 443, but it is discouraged.
-
-### LoadBalancer
+### LoadBalancers
 To permit traffic into your cluster from the outside on ports other than `NodePort`, you can
 use a LoadBalancer. Kubernetes does not include any LoadBalancer implementations, rather,
 these are often provided by the cloud service Kubernetes is running on.
@@ -1842,20 +1685,263 @@ they will be under the `jobs` type.
 kubectl logs jobs/my-cron-28121574
 ```
 
+## Volumes
+
+Volumes provide a means of storage beyond the lifespan of a container.
+
+### Type: emptyDir
+Creates an empty directory when first pod is deployed, which persists on the node where
+is was created so long as the pod exists. Even if the pod crashes, the volume
+will persist. The volume is removed if that that pod is intentionally stopped, restarted,
+updated, or the pod is removed from that specific node.
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  containers:
+  - name: my-containter
+    volumeMounts:
+    - mountPath: /cache
+      name: mycache
+  volumes:
+  - name: mycache
+    emptyDir:
+      sizeLimit: 512Mi
+```
+
+### Type: hostPath
+Mount storage from the host node at from the given path.
+Can be dangerous on multi-node cluster as there is no guarantee the pod will always be
+scheduled to the same node.
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+spec:
+  template:
+    metadata:
+      # -- snip --
+    spec:
+      containers:
+        - name: my-deploys
+          # -- snip --
+          volumeMounts:
+            - name: mymount
+              mountPath: /opt/container_path
+      volumes:
+        - name: mymount
+          hostPath:
+            path: /mnt/node_path
+```
+
+### Type: Local PersistentVolume
+Works similar to `hostPath` volumes, except Kubernetes will always reschedule the same pod
+onto the same node. This means the data will always be persitent to that Pod. Of course when the
+node is unavailable, the pod will be offline.
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-pv
+spec:
+  capacity:
+    storage: 2Gi
+  volumeMode: Filesystem
+  storageClassName: local-storage
+  local:
+    path: /mnt/my-data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - kube1.test.lib.msu.edu
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: local-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: local-storage
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  # -- snip --
+spec:
+  containers:
+  - name: my-app
+    # -- snip --
+    volumeMounts:
+      - name: my-local-storage
+        mountPath: /mnt/storage
+  volumes:
+    - name: my-local-storage
+      persistentVolumeClaim:
+        claimName: local-pcv
+```
+
+### Type: ConfigMap
+[ConfigMaps](#configmaps) and [Secrets](#secrets) can also be leveraged as a mount type.
+Data set in these can be mapped onto the Pod, albeit read-only. Note that there are
+slight difference between ConfigMaps and Secrets. See the relevant documentation for details.
+
+Example mounting `data.files.my-data` from a ConfigMap into a Pod at `/etc/basepath/my-data.txt`:
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-config-map
+data:
+  files.my-data: |
+    This is my file!
+    Which contains my data!
+```
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  containers:
+    - name: my-container
+      # -- snip --
+      volumeMounts:
+      - name: cm-volume
+        mountPath: /etc/basepath
+  volumes:
+    - name: cm-volume
+      configMap:
+        name: my-config-map
+        items:
+        - key: files.my-data
+          path: my-data.txt
+```
+
+### Other Volume Options
+Additional options for volumes include using external storage, such as NFS mounts. These can
+be used in similar manner to the local PersistantVolume, only they aren't local.
+
+There are also cluster storage solutions for creating distributed internal storage within
+the cluster. These include:
+
+* [Longhorn](https://longhorn.io/) ([GitHub](https://github.com/longhorn/longhorn)): Block storage hosted in cluster with replicas across nodes.
+* [Rook](https://rook.io/) ([GitHub](https://github.com/rook/rook)): Ceph based distributed storage for Kubernetes.
+* [OpenEBS](https://openebs.io/) ([GitHub](https://github.com/openebs/openebs)): Distributed storage in Kubernetes with a number of different backends to choose from.
+
 ## Checking Pod Health
-Kubernetes uses probes to determine if a pod is up, alive, and ready to
+Kubernetes uses [probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
+to determine if a pod containers are up, alive, and ready to
 serve requests. By default, each probe always succeeds, so they must be
 defined if you want your pods to be monitored.
 
-### Startup Probe
-TODO
-initialDelaySeconds: Number of seconds after the container has started before liveness or readiness probes are initiated.
+Beside the three types of probes, there are also multiple methods of probes:
+* `exec` Runs a command in the container
+* `httpGet` Perform an HTTP request to the specified URL path
+* `tcpSocket` Probe which succeeds if it can open a socket to the port specified
+* `grpc` Probe using the gRPC Health Checking Protocol
+
+Example Pod manifest with probes defined using `httpGet`:
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-healthy-pod
+  labels:
+    app: healthy 
+spec:
+  containers:
+  - name: healthy
+    image: healthy-image
+    ports:
+    - containerPort: 80
+      protocol: TCP
+      name: http
+    - containerPort: 8081
+      protocol: TCP
+      name: health-port
+    # Allow 200 seconds to startup
+    startupProbe:
+      httpGet:
+        path: /health-stat
+        port: health-port
+      failureThreshold: 20
+      periodSeconds: 10
+    # Alive so long as can respond in 10 seconds (tolerate 1 failure)
+    livenessProbe:
+      httpGet:
+        path: /health-stat
+        port: health-port
+      failureThreshold: 2
+      periodSeconds: 10
+    # Not ready unless it can respond within 3 seconds (no failures allowed)
+    readinessProbe:
+      httpGet:
+        path: /health-stat
+        port: health-port
+      failureThreshold: 1
+      periodSeconds: 3
+```
 
 ### Liveness Probe
-TODO
+A `livenessProbe:` determines if a container is alive. A conatiner is determines to be alive once it's first
+`livenessProbe:` succeeds, after which if it fails a specified number of times, the Pod will be considered
+failed and restart the container.
+
+Liveness probes can be independent of how other probes are executed, but a common tactic is to have a liveness
+probe be the same command as a readiness probe and give the liveness probe a greater timout value. The result
+is that if a container becomes overburdened and become no longer ready, but still condiered alive. A non-ready
+container will not be given new requests and this can give the container to recover and hopefully return to a
+ready state once the high-load has passed.
+
+### Startup Probe
+While a liveness probe might be reasonable during normal container operations, some applications might need
+additional time when first coming online or bootstrapping. Rather than loosening the `livenessProbe:` fields
+to accomodate this, there exists a `startupProbe:` which runs while a container is starting.
+When the first `startupProbe:` succeeds, the container is considered alive and the `startupProbe:` is no
+longer used and the liveness probes begin.
+
+Container startup probe commands are often set to be the same as their liveness node commands. Only difference
+being the `startupProbe:` will have a higher `failureThreshold` set. This grants the container a longer
+period to come alive initially, but then a keeps a closer watch against the container becoming unhealthy once
+running.
 
 ### Readiness Probe
-TODO
+A `readinessProbe:` is use to determine whether Services should route traffic to the container. If the
+readiness probe goes into a failure state, the container non-ready container is no longer sent requests.
+
+Containers with readiness probes may go between ready and not ready for many reasons. High load,
+performing large tasks, etc. These are not situations where the container should be restarted. Instead,
+Kubernetes can back off of the container to let it complete what it was doing, only sending it further
+requests once the container becomes ready again.
+
+### Probe Fields
+Probe can each have the following fields set to modify their behavior.
+
+* `initialDelaySeconds:` Do not perform any probes for this many seconds after the container as started. Default: `0`
+* `periodSeconds:` Perform the probe every so many seconds. Default: `10`
+* `timeoutSeconds:` Probe times out after so many seconds. Default: `1`
+* `failureThreshold:` If individual probe attempts fail/timeout this many times, the overall probe has failed. Default: `3`
+* `successThreshold:` If a probe has reached the `failureThreshold`, this is how many consecutive successes are needed before the 
+probe is considered no longer in a failed state. Only applicable to readiness probes. Default: `1`
 
 ## Metrics
 Kubernetes makes use of a metrics server, deployed within the `kube-system` namespace to monitor
@@ -1925,6 +2011,14 @@ spec:
         memory: "1Gi"
         cpu: "1500m"
 ```
+
+## Horizonal Pod Autoscaling
+Kubernetes can autoscale Deployments and StatefulSets using [Horizonal Pod Autoscaling](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) (HPA). This allows for Kubernetes to add or remove pods
+per the desired specifications. Additional pods can be scheduled under high load, and then
+removed once the load has reduced.
+
+Autoscaling is typically based off data provided by the metrics server (CPU and memory), but
+Kubernetes does support defining your own custom metrics which can be used instead.
 
 ## Events
 An [Event](https://kubernetes.io/docs/reference/kubernetes-api/cluster-resources/event-v1/) is a
@@ -2061,49 +2155,135 @@ spec:
         image: nginx
 ```
 
-## kubectl Commands Reference
+## Commands Reference
 
-TODO common and useful commands, links to docs
+Refer to [Using kubectl](#useing-kubectl) earlier in this document for a quick intro on `kubectl`.
 
-`kubectl get all`
+### `kubectl get`
+Get information about a resource.
+```sh
+# Get a list of nodes in the cluster
+kubectl get nodes
+# Get a list of deployments in the default namespace
+kubectl get deployments
+# Get a list of deployments in the 'prod-web' namespace
+kubectl get -n prod-web deployments
+# Get a list of deployments in the all namespace
+kubectl get deployments -A
+# Get the full yaml dump for the specified Pod
+kubectl get pod/my-web -o yaml
+# Get info on all resources in the cluster in all namespace, output in wide table format
+kubectl get all -A -o wide
+```
 
-`kubectl describe deployment.apps -n kube-system coredns`
+### `kubectl describe`
+Show detailed information about a resource.
+```sh
+kubectl describe pod my-pod
+kubectl describe -n kube-system deployment coredns
+```
 
-`kubectl scale deployments.apps -n kube-system coredns --replicas=3 deployment.apps/coredns scaled`
+### `kubectl edit`
+Open an existing resource in an editor and edit it. Resource updated upon save and quit.
+```sh
+kubectl edit -n my-namespace deployment my-deployment-name
+kubectl edit service my-service-name
+kubectl edit -n my-namespace configmap my-settings-map
+```
 
-`kubectl edit KIND NAME`
+### `kubectl logs`
+To view logs (stdout, stderr) for Pods:
+```sh
+kubectl logs -n my-namespace pod/my-podname
+# Get the logs for the previous instance of the given Pod
+kubectl logs -n kube-system pod/my-podname --previous
+# Follow log output with -f
+kubectl logs -f pods my-nginx
+# To get all logs for conainers in a Deployment/DaemonSet/StatefulSet, you must use label selectors
+kubectl logs -n kube-system -f -l k8s-app=kube-dns
+```
 
-`kubectl logs -n kube-system <podName>`
-`kubectl logs -n kube-system <podName> --previous`
+### `kubectl exec`
+Run a process (such as a shell) within an existing container. You can exec to any container
+regardless of where your connecting from.
+```sh
+# Connect to primary container in a Pod
+kubectl exec -i -t pods/my-shell-demo -- /bin/bash
+# Connect to a sidecar container in a Pod
+kubectl exec -it pods/my-double-pod --container logger-container -- /bin/bash
+```
 
-to get all logs for a deployment/daemonset/statefulset at once, must use labels
-`kubectl logs -n kube-system -f -l k8s-app=kube-dns`
+### `kubectl cp`
+Copy a file or directory either to or from a container.
+```sh
+# Copy a file from /tmp/ on host into /root/ dir in container for the given namespace
+kubectl copy -n project-namespace /tmp/myfile.tgz my-pod:/root/
+# Copy a file out from the container onto the host node for default namespace
+kubectl copy my-pod:/etc/my-config.cfg /tmp/
+```
 
-`kubectl -n kube-system edit cm <cmName>` Edit config map
+### `kubectl apply`
+Apply a manifest configuration to create or update a resource. Only the parts of the resource
+which are being modified need to be specified within the manifest.
+```sh
+# Local manifest
+kubectl apply -n my-namespace -f my-manifest.yaml
+# Remote manifest
+kubectl apply -f https://k8s.io/examples/application/nginx/nginx-deployment.yaml
+```
 
-TODO note you can exec to any container from any node. wow!
-`kubectl exec -i -t shell-demo -- /bin/bash` # exec in pod with single container (no need to specify)
-
-`kubectl exec -i -t my-pod --container main-app -- /bin/bash` # selecting container from multi-container pod
-
-`kubectl apply` create/update API; when updating, only need to specify parts changing
-
-`kubectl create` create API; will fail if already exists
-
-`kubectl replace` completely replace existing object; must provide complete manifest; `--force` flag will have it actually perform a `DELETE` before re-creating object with new manifest
-
-to update fields that cannot be updated, delete and re-create the resource with `replace --force`
-`kubectl replace -f https://k8s.io/examples/application/nginx/nginx-deployment.yaml --force`
-
-TODO see the difference between file and loaded manifest (and display if the change would not be valid)
+### `kubectl diff`
+See the difference between the provided manifest file and resource within Kubernetes.
+Will also display if there are any change would not be valid.
 `kubectl diff -f manifest.yaml`
 
+### `kubectl replace`
+Replace existing resources with ones defined in the provided manifest. Will _not_ replace objects
+which have immutable values which cannot be changed.
+To force a resources to be fully removed first, allowing for updating immutable values,
+you can provide the `--force` flag. This will ensure objects are deleted and recreated.
+```sh
+kubectl replace -f my-deployment.yaml --force
+```
+
+### `kubectl rollout`
+TODO
+
+### `kubectl delete`
+Completely delete resourced defined by the provided manifest.
+```sh
+kubectl delete -f my-manifest.yaml
+```
+
+### `kubectl create`
+TODO create most resources imperatively
+TODO imperative create calls will fail if already exists
+
+### `kubectl patch`
+TODO
 `kubectl patch` to update API objects in place
 
-`kubectl delete`
+### `kubectl expose`
+TODO create a service imperatively
 
-`kubectl scale`
+### `kubectl run`
+TODO run a container imperatively
 
+### `kubectl attach`
+TODO attach to a containers already running process (versus `run` which creates a new process)
+
+### `kubectl label`
+TODO set/modify labels
+
+### `kubectl annotate`
+TODO set/modify annotations
+
+### `kubectl scale`
+TODO beware, as deployments will auto-correct your replica count
+`kubectl scale deployments.apps -n kube-system coredns --replicas=3 deployment.apps/coredns scaled`
+
+### `kubectl autoscale`
+TODO create HPA imperatively
 `kubectl autoscale`
 
 ## Helm: The Kubernetes Package Manager
@@ -2122,15 +2302,58 @@ not like Kubernetes doesn't already have a hundred other bespoke terms you need 
 * Release: An instanced of a deployed chart.
 * Artifact Hub: A central listing of repositories.
 
-### Finding or Adding a Repository
-TODO
-https://helm.sh/docs/intro/using_helm/
+### Finding a Chart
+Charts can be found be found on the Artifact Hub (Hub) by searching:
+```sh
+helm search hub TERM
+```
+
+Repositories not on the Hub can be added manually and require a name to be associated with it.
+```sh
+#             RepoName RepoUrl
+helm repo add traefik  https://traefik.github.io/charts
+```
+
+You can then search for Charts in your added repositories by:
+```sh
+helm repo add traefik https://traefik.github.io/charts
+```
 
 ### Installing a Package as a Release
-TODO
-https://helm.sh/docs/intro/using_helm/#more-installation-methods
+The most common way of installing a Chart is via `helm install` and
+providing a name for the release and the Chart name:
+```sh
+# Name the Release yourself
+#            Release    Chart
+helm install my-traefik traefik/traefik
+
+# Or let Helm create a name for you
+helm install traefik/traefik --generate-name
+```
+
+Alternative way of installing Chart include via a tarball, an
+extracted tarball, or a URL to a tarball.
+```sh
+helm install my-app my-app.tar.gz
+helm install my-app /path/to/my-app/
+helm install my-app https://my-app.example.edu/charts/my-app.tgz
+```
+
+To see the state of a release:
+```sh
+helm status my-app
+```
+
+To see a list of all current releases on your cluster:
+```sh
+helm list
+```
 
 #### Customizing a Release
+Stock versions of Charts often need customization to become useful to
+your specific circumstances. To customize a release, you can provide
+a set of values in a Yaml to modify the default install values.
+
 TODO
 
 ### Upgrading a Release
@@ -2140,8 +2363,10 @@ TODO
 TODO
 
 ### Removing a Release
-TODO
-
+Uninstalling a release can be done by simply:
+```sh
+helm uninstall my-app
+```
 
 ## Kustomize: Templating for Kubernetes
 
@@ -2192,7 +2417,7 @@ spec:
 Logs for containerd and kubelet go into `/var/log/syslog` by default. If you'd like them configured
 with separate log files, you must add a configuration in `rsyslog`.
 
-TODO
+TODO rsyslog config
 
 ### Resource Abbreviations
 You may have noticed that when referencing resources, both plural singular are allowed.
