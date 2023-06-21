@@ -1288,7 +1288,7 @@ spec:
 ```
 
 ### ConfigMaps
-A [ConfigMap(https://kubernetes.io/docs/concepts/configuration/configmap/) is a way to
+A [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) is a way to
 have key-value storage within Kubernetes. As ConfigMap data is stored within Kubernetes,
 there are no additional steps to sync the data across nodes in the cluster. All nodes
 accessing a ConfigMap will always read the same data.
@@ -2165,9 +2165,9 @@ spec:
 
 ## Commands Reference
 
-Refer to [Using kubectl](#useing-kubectl) earlier in this document for a quick intro on `kubectl`.
+Refer to [Using kubectl](#using-kubectl) earlier in this document for a quick intro on `kubectl`.
 
-### `kubectl get`
+### [`kubectl get`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#get)
 Get information about a resource.
 ```sh
 # Get a list of nodes in the cluster
