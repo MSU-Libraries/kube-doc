@@ -2184,14 +2184,14 @@ kubectl get pod/my-web -o yaml
 kubectl get all -A -o wide
 ```
 
-### `kubectl describe`
+### [`kubectl describe`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#describe)
 Show detailed information about a resource.
 ```sh
 kubectl describe pod my-pod
 kubectl describe -n kube-system deployment coredns
 ```
 
-### `kubectl edit`
+### [`kubectl edit`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#edit)
 Open an existing resource in an editor and edit it. Resource updated upon save and quit.
 ```sh
 kubectl edit -n my-namespace deployment my-deployment-name
@@ -2199,7 +2199,7 @@ kubectl edit service my-service-name
 kubectl edit -n my-namespace configmap my-settings-map
 ```
 
-### `kubectl logs`
+### [`kubectl logs`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#logs)
 To view logs (stdout, stderr) for Pods:
 ```sh
 kubectl logs -n my-namespace pod/my-podname
@@ -2211,7 +2211,7 @@ kubectl logs -f pods my-nginx
 kubectl logs -n kube-system -f -l k8s-app=kube-dns
 ```
 
-### `kubectl exec`
+### [`kubectl exec`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#exec)
 Run a process (such as a shell) within an existing container. You can exec to any container
 regardless of where your connecting from.
 ```sh
@@ -2221,7 +2221,7 @@ kubectl exec -i -t pods/my-shell-demo -- /bin/bash
 kubectl exec -it pods/my-double-pod --container logger-container -- /bin/bash
 ```
 
-### `kubectl cp`
+### [`kubectl cp`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#cp)
 Copy a file or directory either to or from a container.
 ```sh
 # Copy a file from /tmp/ on host into /root/ dir in container for the given namespace
@@ -2230,7 +2230,7 @@ kubectl copy -n project-namespace /tmp/myfile.tgz my-pod:/root/
 kubectl copy my-pod:/etc/my-config.cfg /tmp/
 ```
 
-### `kubectl apply`
+### [`kubectl apply`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#apply)
 Apply a manifest configuration to create or update a resource. Only the parts of the resource
 which are being modified need to be specified within the manifest.
 ```sh
@@ -2240,12 +2240,12 @@ kubectl apply -n my-namespace -f my-manifest.yaml
 kubectl apply -f https://k8s.io/examples/application/nginx/nginx-deployment.yaml
 ```
 
-### `kubectl diff`
+### [`kubectl diff`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#diff)
 See the difference between the provided manifest file and resource within Kubernetes.
 Will also display if there are any change would not be valid.
 `kubectl diff -f manifest.yaml`
 
-### `kubectl replace`
+### [`kubectl replace`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#replace)
 Replace existing resources with ones defined in the provided manifest. Will _not_ replace objects
 which have immutable values which cannot be changed.
 To force a resources to be fully removed first, allowing for updating immutable values,
@@ -2254,45 +2254,43 @@ you can provide the `--force` flag. This will ensure objects are deleted and rec
 kubectl replace -f my-deployment.yaml --force
 ```
 
-### `kubectl rollout`
-TODO
+### [`kubectl rollout`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#rollout)
+TODO monitor and manage a rollout
 
-### `kubectl delete`
+### [`kubectl delete`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#delete)
 Completely delete resourced defined by the provided manifest.
 ```sh
 kubectl delete -f my-manifest.yaml
 ```
 
-### `kubectl create`
+### [`kubectl create`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#create)
 TODO create most resources imperatively
 TODO imperative create calls will fail if already exists
 
-### `kubectl patch`
-TODO
-`kubectl patch` to update API objects in place
+### [`kubectl patch`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#patch)
+TODO update API objects in place
 
-### `kubectl expose`
+### [`kubectl expose`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#expose)
 TODO create a service imperatively
 
-### `kubectl run`
+### [`kubectl run`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#run)
 TODO run a container imperatively
 
-### `kubectl attach`
+### [`kubectl attach`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#attach)
 TODO attach to a containers already running process (versus `run` which creates a new process)
 
-### `kubectl label`
+### [`kubectl label`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#label)
 TODO set/modify labels
 
-### `kubectl annotate`
+### [`kubectl annotate`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#annotate)
 TODO set/modify annotations
 
-### `kubectl scale`
+### [`kubectl scale`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#scale)
 TODO beware, as deployments will auto-correct your replica count
 `kubectl scale deployments.apps -n kube-system coredns --replicas=3 deployment.apps/coredns scaled`
 
-### `kubectl autoscale`
+### [`kubectl autoscale`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#autoscale)
 TODO create HPA imperatively
-`kubectl autoscale`
 
 ## Helm: The Kubernetes Package Manager
 
