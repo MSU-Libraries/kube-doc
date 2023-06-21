@@ -2167,6 +2167,9 @@ spec:
 
 Refer to [Using kubectl](#using-kubectl) earlier in this document for a quick intro on `kubectl`.
 
+The official [`kubectl` Cheat Sheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/) can
+also be a handy reference.
+
 ### [`kubectl get`](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#get)
 Get information about a resource.
 ```sh
